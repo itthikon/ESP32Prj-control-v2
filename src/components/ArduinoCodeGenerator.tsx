@@ -188,8 +188,12 @@ void connectToWiFi() {
   WiFi.begin(ssid, password);
   
   int attempts = 0;
+  // กะพริบไฟ LED สีน้ำเงิน/ฟ้า ขณะกำลังเชื่อมต่อ Wi-Fi
   while (WiFi.status() != WL_CONNECTED && attempts < 20) {
-    delay(500);
+    digitalWrite(PIN_LED, HIGH);
+    delay(250);
+    digitalWrite(PIN_LED, LOW);
+    delay(250);
     Serial.print(".");
     attempts++;
   }
@@ -199,13 +203,11 @@ void connectToWiFi() {
     Serial.println("เชื่อมต่อ Wi-Fi สำเร็จ!");
     Serial.print("IP Address: ");
     Serial.println(WiFi.localIP());
-    // กะพริบไฟ LED 3 ครั้งแสดงสัญญาณความสำเร็จ
-    for (int i=0; i<3; i++) {
-      digitalWrite(PIN_LED, HIGH); delay(100);
-      digitalWrite(PIN_LED, LOW); delay(100);
-    }
+    // เปิดไฟสีน้ำเงิน/ฟ้าค้างไว้เมื่อเชื่อมต่อสำเร็จ
+    digitalWrite(PIN_LED, HIGH);
   } else {
     Serial.println("\\nไม่สามารถเชื่อมต่อ Wi-Fi ได้ จะลองใหม่อีกครั้งในวงรอบถัดไป...");
+    digitalWrite(PIN_LED, LOW); // ดับไฟหากเชื่อมต่อล้มเหลว
   }
 }
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { DeviceState, ControlState, LogEntry, DeviceInfo, SupabaseConfig, SensorConfig } from "./types";
 import DashboardHeader from "./components/DashboardHeader";
 import SensorGrid from "./components/SensorGrid";
@@ -68,6 +68,9 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [isClientFallback, setIsClientFallback] = useState(false);
 
+  // Keep track of consecutive connection failures before forcing fallback mode
+  const consecutiveFailuresRef = useRef(0);
+
   // Fetch state from server API for a specific device ID
   const fetchDeviceState = useCallback(async (deviceId: string, showIndicator = false) => {
     if (showIndicator) setIsRefreshing(true);
@@ -86,14 +89,23 @@ export default function App() {
       setDeviceState(data);
       setError(null);
       setIsClientFallback(false);
+      consecutiveFailuresRef.current = 0; // reset failures on successful fetch
     } catch (err: any) {
-      console.error("Failed to fetch ESP32 device state, falling back to local simulation:", err);
-      setError(err.message || "ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์หลังบ้านได้");
-      setIsClientFallback(true);
-      setDeviceState((prev) => {
-        if (prev) return prev;
-        return createDefaultDeviceState();
-      });
+      console.warn("Failed to fetch ESP32 device state, retrying...", err.message || err);
+      consecutiveFailuresRef.current += 1;
+      
+      // Fallback to client-side simulation only if connection repeatedly fails (e.g. 5 times)
+      if (consecutiveFailuresRef.current >= 5) {
+        setError(err.message || "ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์หลังบ้านได้");
+        setIsClientFallback(true);
+        setDeviceState((prev) => {
+          if (prev) return prev;
+          return createDefaultDeviceState();
+        });
+      } else {
+        // Show temporary retry notice but don't drop to simulation yet
+        setError(`กำลังพยายามเชื่อมต่อหลังบ้านใหม่... (ครั้งที่ ${consecutiveFailuresRef.current}/5)`);
+      }
     } finally {
       if (showIndicator) setIsRefreshing(false);
     }
