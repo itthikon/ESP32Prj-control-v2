@@ -1,0 +1,6 @@
+{
+  "name": "ESP32 Wi-Fi Control & Dashboard",
+  "description": "ระบบควบคุมและแสดงสถานะ ESP32 ผ่าน Wi-Fi พร้อมแดชบอร์ดแสดงผลเซ็นเซอร์แบบเรียลไทม์ และฟังก์ชันสร้างโค้ด Arduino สำหรับนำไปใช้งานจริง",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
