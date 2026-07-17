@@ -1,5 +1,5 @@
 import React from "react";
-import { Cpu, Wifi, WifiOff, RefreshCw, Trash2, Zap, Play, Pause } from "lucide-react";
+import { Cpu, Wifi, WifiOff, RefreshCw, Trash2, Zap, Play, Pause, LogOut, User } from "lucide-react";
 
 interface DashboardHeaderProps {
   isOnline: boolean;
@@ -7,6 +7,8 @@ interface DashboardHeaderProps {
   onReset: () => void;
   isRefreshing: boolean;
   onManualRefresh: () => void;
+  username: string;
+  onLogout: () => void;
 }
 
 export default function DashboardHeader({
@@ -15,6 +17,8 @@ export default function DashboardHeader({
   onReset,
   isRefreshing,
   onManualRefresh,
+  username,
+  onLogout,
 }: DashboardHeaderProps) {
   const formattedLastSeen = lastSeen
     ? new Date(lastSeen).toLocaleTimeString("th-TH")
@@ -84,7 +88,7 @@ export default function DashboardHeader({
           </div>
 
           {/* Header Actions */}
-          <div className="flex items-center gap-1.5 border-l border-slate-200 pl-3">
+          <div className="flex items-center gap-2 border-l border-slate-200 pl-3">
             <button
               onClick={onManualRefresh}
               disabled={isRefreshing}
@@ -100,6 +104,25 @@ export default function DashboardHeader({
             >
               <Trash2 className="w-4 h-4" />
             </button>
+
+            {/* Logged in User Badge & Logout button */}
+            <div className="flex items-center gap-2 border-l border-slate-200 pl-3 ml-1">
+              <div className="hidden lg:flex flex-col items-end text-right">
+                <span className="text-[10px] text-slate-400 font-semibold uppercase">ผู้ใช้งาน</span>
+                <span className="text-xs font-bold text-slate-700 font-mono">{username}</span>
+              </div>
+              <div className="p-1.5 bg-slate-100 text-slate-600 rounded-lg border border-slate-200/50 hidden sm:block">
+                <User className="w-3.5 h-3.5" />
+              </div>
+              <button
+                onClick={onLogout}
+                className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 border border-rose-100 hover:border-rose-200 text-rose-700 font-bold text-xs rounded-lg transition-all cursor-pointer"
+                title="ออกจากระบบแดชบอร์ด"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">ออกจากระบบ</span>
+              </button>
+            </div>
           </div>
 
         </div>

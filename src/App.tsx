@@ -10,6 +10,7 @@ import SupabaseSettingsPanel from "./components/SupabaseSettingsPanel";
 import DeviceSelectorPanel from "./components/DeviceSelectorPanel";
 import SensorConfigManager from "./components/SensorConfigManager";
 import DesktopAppPanel from "./components/DesktopAppPanel";
+import LoginScreen from "./components/LoginScreen";
 import { Info, HelpCircle, ArrowUpRight, Cpu, BookOpen, Layers, Database, RefreshCw, AlertCircle, Laptop } from "lucide-react";
 
 // Helper to generate default state for client-side fallback simulation
@@ -58,6 +59,10 @@ const createDefaultDeviceState = (): DeviceState => {
 };
 
 export default function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [currentUser, setCurrentUser] = useState<string>("");
+  const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
+
   const [deviceState, setDeviceState] = useState<DeviceState | null>(null);
   const [devicesList, setDevicesList] = useState<DeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>("device_1");
@@ -65,12 +70,50 @@ export default function App() {
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSendingControl, setIsSendingControl] = useState(false);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "arduino" | "supabase">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "arduino" | "supabase" | "desktop">("dashboard");
   const [error, setError] = useState<string | null>(null);
   const [isClientFallback, setIsClientFallback] = useState(false);
 
   // Keep track of consecutive connection failures before forcing fallback mode
   const consecutiveFailuresRef = useRef(0);
+
+  // Check login session (must login again if exceeds 1 day/24 hours)
+  useEffect(() => {
+    const storedUser = localStorage.getItem("esp32_user");
+    const storedTime = localStorage.getItem("esp32_login_time");
+
+    if (storedUser && storedTime) {
+      const loginTime = parseInt(storedTime, 10);
+      const oneDayInMs = 24 * 60 * 60 * 1000; // 24 hours
+      const timePassed = Date.now() - loginTime;
+
+      if (timePassed < oneDayInMs) {
+        setIsAuthenticated(true);
+        setCurrentUser(storedUser);
+      } else {
+        // Expired (over 1 day)
+        localStorage.removeItem("esp32_user");
+        localStorage.removeItem("esp32_login_time");
+        setIsAuthenticated(false);
+        setCurrentUser("");
+      }
+    }
+    setIsAuthChecking(false);
+  }, []);
+
+  const handleLoginSuccess = (username: string) => {
+    localStorage.setItem("esp32_user", username);
+    localStorage.setItem("esp32_login_time", Date.now().toString());
+    setIsAuthenticated(true);
+    setCurrentUser(username);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("esp32_user");
+    localStorage.removeItem("esp32_login_time");
+    setIsAuthenticated(false);
+    setCurrentUser("");
+  };
 
   // Fetch state from server API for a specific device ID
   const fetchDeviceState = useCallback(async (deviceId: string, showIndicator = false) => {
@@ -474,6 +517,21 @@ export default function App() {
     }
   };
 
+  if (isAuthChecking) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-3">
+          <RefreshCw className="w-8 h-8 animate-spin text-blue-500" />
+          <span className="text-xs text-slate-400 font-semibold uppercase tracking-widest animate-pulse">กำลังตรวจสอบข้อมูลเซสชัน...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
+  }
+
   if (!deviceState) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
@@ -531,6 +589,8 @@ export default function App() {
         onReset={handleReset}
         isRefreshing={isRefreshing}
         onManualRefresh={() => fetchDeviceState(selectedDeviceId, true)}
+        username={currentUser}
+        onLogout={handleLogout}
       />
 
       {/* Main Container */}
