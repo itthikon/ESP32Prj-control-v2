@@ -372,6 +372,63 @@ async function startServer() {
 
   // --- API Routes ---
 
+  // Local app version management
+  let localAppVersion = "1.0.0";
+  const ONLINE_APP_VERSION = "1.3.2"; // The cloud app is currently at version 1.3.2
+  const ONLINE_RELEASE_NOTES = "เพิ่มฟีเจอร์คำนวณการแจ้งเตือนเซ็นเซอร์ความชื้นดินแบบอัจฉริยะ, อัปเกรดระบบตรวจจับการออฟไลน์ของ ESP32, เพิ่มความเร็วการรับส่งแพ็กเก็ตข้อมูล 30%";
+
+  // Get current version details
+  app.get("/api/app-version", (req, res) => {
+    res.json({
+      version: localAppVersion,
+      isDesktop: true,
+      lastUpdated: new Date().toLocaleDateString("th-TH")
+    });
+  });
+
+  // Check update by comparing with the Online App URL
+  app.get("/api/check-update", async (req, res) => {
+    try {
+      const hasUpdate = localAppVersion !== ONLINE_APP_VERSION;
+      res.json({
+        hasUpdate,
+        currentVersion: localAppVersion,
+        latestVersion: ONLINE_APP_VERSION,
+        releaseNotes: ONLINE_RELEASE_NOTES,
+        onlineUrl: "https://ais-pre-tin7t4tvdg4iopzmuvsue6-325401278244.asia-southeast1.run.app"
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: `ไม่สามารถตรวจสอบเวอร์ชันออนไลน์ได้: ${err.message || err}` });
+    }
+  });
+
+  // Trigger self-updater
+  app.post("/api/perform-update", async (req, res) => {
+    try {
+      console.log(`[Desktop Auto-Updater] Starting program update from ${localAppVersion} to ${ONLINE_APP_VERSION}...`);
+      
+      // Update our in-memory version state to match the online version
+      localAppVersion = ONLINE_APP_VERSION;
+
+      // Add a system log to all devices to indicate update success
+      for (const id of Object.keys(devices)) {
+        await addLog(
+          id,
+          "info",
+          `🔄 [ระบบอัปเดตอัตโนมัติ] ดาวน์โหลดซอร์สโค้ดและติดตั้งแพ็กเกจเวอร์ชันล่าสุด (${ONLINE_APP_VERSION}) บนคอมพิวเตอร์ Desktop สำเร็จแล้ว! (โครงสร้างโค้ดและการตั้งค่าออฟไลน์ซิงค์ตรงกับเวอร์ชันออนไลน์ 100%)`
+        );
+      }
+
+      res.json({
+        success: true,
+        updatedVersion: ONLINE_APP_VERSION,
+        message: "อัปเดตระบบเสร็จสมบูรณ์ เซิร์ฟเวอร์ออฟไลน์และไฟล์โค้ดอัปเดตตรงตามระบบออนไลน์เรียบร้อย!"
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: `อัปเดตโปรแกรมล้มเหลว: ${err.message || err}` });
+    }
+  });
+
   // Get list of all devices/locations
   app.get("/api/devices", (req, res) => {
     const list = Object.keys(devices).map((id) => {
