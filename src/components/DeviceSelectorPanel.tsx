@@ -251,6 +251,13 @@ export default function DeviceSelectorPanel({
                     {dev.isOnline ? "ONLINE" : "OFFLINE"}
                   </span>
 
+                  {dev.syncPending && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-100 animate-pulse" title="การตั้งค่าบอร์ดนี้มีการปรับเปลี่ยนแบบ Local และกำลังรอสัญญาณเน็ตเพื่อซิงค์ไปยังอินเทอร์เน็ต">
+                      <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                      <span>รอซิงค์</span>
+                    </span>
+                  )}
+
                   {dev.telemetry?.wifiRssi !== undefined && dev.isOnline && (
                     <span className="text-[10px] text-slate-400 font-mono flex items-center gap-0.5 ml-auto pr-6">
                       <Wifi className="w-2.5 h-2.5" />

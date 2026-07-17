@@ -9,7 +9,8 @@ import ArduinoCodeGenerator from "./components/ArduinoCodeGenerator";
 import SupabaseSettingsPanel from "./components/SupabaseSettingsPanel";
 import DeviceSelectorPanel from "./components/DeviceSelectorPanel";
 import SensorConfigManager from "./components/SensorConfigManager";
-import { Info, HelpCircle, ArrowUpRight, Cpu, BookOpen, Layers, Database, RefreshCw, AlertCircle } from "lucide-react";
+import DesktopAppPanel from "./components/DesktopAppPanel";
+import { Info, HelpCircle, ArrowUpRight, Cpu, BookOpen, Layers, Database, RefreshCw, AlertCircle, Laptop } from "lucide-react";
 
 // Helper to generate default state for client-side fallback simulation
 const createDefaultDeviceState = (): DeviceState => {
@@ -619,6 +620,17 @@ export default function App() {
             <Database className="w-4 h-4" />
             <span>เชื่อมต่อฐานข้อมูล Supabase</span>
           </button>
+          <button
+            onClick={() => setActiveTab("desktop")}
+            className={`px-4 py-2.5 text-sm font-semibold rounded-t-xl transition-all border-b-2 cursor-pointer flex items-center gap-2 ${
+              activeTab === "desktop"
+                ? "border-blue-600 text-blue-600 bg-white shadow-2xs"
+                : "border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/50"
+            }`}
+          >
+            <Laptop className="w-4 h-4" />
+            <span>แอปติดตั้งบนเครื่อง (Desktop App)</span>
+          </button>
         </div>
 
         {/* Tab Content Rendering */}
@@ -668,6 +680,8 @@ export default function App() {
               control={deviceState.control}
               onControlChange={handleControlChange}
               isSendingControl={isSendingControl}
+              supabaseConnected={deviceState.supabaseConnected}
+              syncPending={deviceState.syncPending}
             />
 
             {/* 3.5 Sensor Hardware Configuration Manager */}
@@ -736,6 +750,10 @@ export default function App() {
             currentConfig={supabaseConfig}
             onConfigUpdated={fetchDevicesAndConfig}
           />
+        )}
+
+        {activeTab === "desktop" && (
+          <DesktopAppPanel />
         )}
 
       </main>

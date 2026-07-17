@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Copy, Check, Code, Cpu, Download, FileCode, CheckCircle } from "lucide-react";
+import { Copy, Check, Code, Cpu, Download, FileCode, CheckCircle, Wifi, ArrowRightLeft, HelpCircle, Info, Laptop } from "lucide-react";
 import { SensorConfig } from "../types";
 
 interface ArduinoCodeGeneratorProps {
@@ -14,6 +14,7 @@ export default function ArduinoCodeGenerator({ deviceId, sensors = [] }: Arduino
 
   // Dynamically get the current web app origin or default to a placeholder
   const serverUrl = typeof window !== "undefined" ? window.location.origin : "https://your-dashboard-domain.com";
+  const [customServerUrl, setCustomServerUrl] = useState(serverUrl);
 
   // Check what sensors exist
   const hasDHT22 = sensors.some(s => s.type === "DHT22");
@@ -116,7 +117,7 @@ char current_ssid[64]     = "${ssid}";
 char current_password[64] = "${password}";
 
 // --- กำหนดค่า API Endpoint ของเว็บแดชบอร์ด ---
-const char* serverApiUrl = "${serverUrl}/api/device/telemetry?id=${deviceId}";
+const char* serverApiUrl = "${customServerUrl}/api/device/telemetry?id=${deviceId}";
 
 // --- กำหนดขาเชื่อมต่ออุปกรณ์ (Pins) ---
 #define PIN_LED       2   // Built-in LED บอร์ด ESP32
@@ -448,8 +449,73 @@ void sendTelemetryAndFetchControls(String jsonString) {
         </div>
       </div>
 
+      {/* Local LAN Connection & Control Loop Guide */}
+      <div className="mb-5 bg-gradient-to-r from-blue-50/50 via-indigo-50/30 to-slate-50/50 border border-blue-100 p-4 rounded-xl">
+        <div className="flex items-start gap-3">
+          <div className="p-2 bg-blue-100 text-blue-700 rounded-lg shrink-0 mt-0.5">
+            <Wifi className="w-5 h-5 animate-pulse" />
+          </div>
+          <div className="space-y-3 w-full">
+            <div>
+              <h4 className="font-bold text-xs sm:text-sm text-slate-800 flex items-center gap-1.5">
+                <span>แผนผังเชื่อมต่อและควบคุมระบบผ่านวง Wi-Fi เดียวกัน (Local LAN Control Loop)</span>
+              </h4>
+              <p className="text-[11px] sm:text-xs text-slate-500 leading-relaxed mt-1">
+                คุณสามารถเชื่อมต่อบอร์ด Arduino/ESP32 และคอมพิวเตอร์ที่เปิดใช้งานโปรแกรม Desktop App เข้าหากันได้โดยตรงโดยผ่านตัวกลางคือ <b>เราเตอร์ Wi-Fi (Router) เครื่องเดียวกัน</b> โดยไม่ต้องพึ่งพาระบบอินเทอร์เน็ตภายนอก (Offline 100%)
+              </p>
+            </div>
+
+            {/* Visual Topology Diagram */}
+            <div className="bg-white/80 border border-slate-100 rounded-lg p-3 text-center flex flex-col sm:flex-row items-center justify-center gap-3 shadow-2xs">
+              <div className="flex flex-col items-center p-2 bg-slate-50 rounded-lg border border-slate-100 w-32 shrink-0">
+                <Cpu className="w-5 h-5 text-amber-600 mb-1" />
+                <span className="text-[10px] font-bold text-slate-700">บอร์ด ESP32</span>
+                <span className="text-[9px] text-slate-400">ตัวส่งเซ็นเซอร์ & รับคำสั่ง</span>
+              </div>
+              <div className="flex items-center gap-1 text-blue-500 font-bold text-[10px] sm:my-0 my-1">
+                <span className="hidden sm:inline">────</span>
+                <Wifi className="w-3.5 h-3.5 mx-1" />
+                <ArrowRightLeft className="w-3.5 h-3.5 mx-1" />
+                <span className="hidden sm:inline">────</span>
+              </div>
+              <div className="flex flex-col items-center p-2 bg-blue-50/60 rounded-lg border border-blue-100 w-44 shrink-0">
+                <Wifi className="w-5 h-5 text-blue-600 mb-1" />
+                <span className="text-[10px] font-bold text-slate-700">เราเตอร์ Wi-Fi (Router)</span>
+                <span className="text-[9px] text-slate-400">เชื่อมต่อวง LAN (วงเดียวกัน)</span>
+              </div>
+              <div className="flex items-center gap-1 text-blue-500 font-bold text-[10px] sm:my-0 my-1">
+                <span className="hidden sm:inline">────</span>
+                <ArrowRightLeft className="w-3.5 h-3.5 mx-1" />
+                <span className="hidden sm:inline">────</span>
+              </div>
+              <div className="flex flex-col items-center p-2 bg-slate-50 rounded-lg border border-slate-100 w-32 shrink-0">
+                <Laptop className="w-5 h-5 text-indigo-600 mb-1" />
+                <span className="text-[10px] font-bold text-slate-700">เครื่องคอมพิวเตอร์</span>
+                <span className="text-[9px] text-slate-400">แอปติดตั้ง (Desktop App)</span>
+              </div>
+            </div>
+
+            {/* Explanations */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+              <div className="p-2.5 bg-white/50 rounded-lg border border-slate-100/70">
+                <span className="font-bold text-[11px] text-slate-700 block mb-1">🔌 การส่งข้อมูลและสั่งการทำงาน (C-R Loop)</span>
+                <p className="text-[10px] text-slate-500 leading-relaxed">
+                  เมื่อบอร์ด ESP32 เชื่อมต่อ Wi-Fi เดียวกัน บอร์ดจะยิงส่งข้อมูลเซ็นเซอร์มาที่แอปพลิเคชันบนคอมพิวเตอร์ และในทางกลับกัน ตัวเซิร์ฟเวอร์จะ<b>ส่งคำสั่งควบคุม LED และรีเลย์ปั๊มน้ำที่คุณกดจากหน้าจอแดชบอร์ดกลับไปให้บอร์ดทันที</b>ผ่านทาง HTTP Response
+                </p>
+              </div>
+              <div className="p-2.5 bg-white/50 rounded-lg border border-slate-100/70">
+                <span className="font-bold text-[11px] text-slate-700 block mb-1">⚠️ วิธีตรวจสอบที่อยู่ IP ของเครื่องโฮสต์</span>
+                <p className="text-[10px] text-slate-500 leading-relaxed">
+                  รันโปรแกรมผ่านสคริปต์ <code>run-windows.bat</code>, <code>run-mac.command</code> หรือ <code>run-linux.sh</code> แล้วตรวจสอบบรรทัด <code className="bg-amber-100 text-amber-800 px-1 rounded">👉 http://192.168.1.XX:3000</code> จากหน้าจอสีดำ จากนั้นนำมาใส่ในช่อง Server IP ด้านล่าง โค้ดด้านล่างจะอัปเดตให้อัตโนมัติ!
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Network Inputs to customize the code inline! */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl mb-4 border border-slate-100">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-xl mb-4 border border-slate-100">
         <div>
           <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
             Wi-Fi SSID (ชื่อไวไฟบ้านคุณ)
@@ -473,6 +539,21 @@ void sendTelemetryAndFetchControls(String jsonString) {
             className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs sm:text-sm font-semibold text-slate-700 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
             placeholder="รหัสผ่านเชื่อมต่อไวไฟ"
           />
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+            Server IP/URL (ที่อยู่เซิร์ฟเวอร์หลังบ้าน)
+          </label>
+          <input
+            type="text"
+            value={customServerUrl}
+            onChange={(e) => setCustomServerUrl(e.target.value)}
+            className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs sm:text-sm font-semibold text-slate-700 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
+            placeholder="เช่น http://192.168.1.50:3000"
+          />
+          <span className="text-[10px] text-slate-400 mt-0.5 block">
+            ใช้ IP ของเราเตอร์/คอมในวง LAN เดียวกันเพื่อสั่งการแบบออฟไลน์โดยไม่ต้องใช้อินเทอร์เน็ตได้
+          </span>
         </div>
       </div>
 

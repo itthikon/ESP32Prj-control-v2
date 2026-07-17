@@ -50,6 +50,7 @@ export interface DeviceInfo {
   simulationEnabled: boolean;
   telemetry: Telemetry;
   sensors?: SensorConfig[];
+  syncPending?: boolean;
 }
 
 export interface SupabaseConfig {

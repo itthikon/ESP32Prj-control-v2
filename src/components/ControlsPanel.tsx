@@ -1,17 +1,21 @@
 import React from "react";
 import { ControlState } from "../types";
-import { Lightbulb, ToggleLeft, ToggleRight, Zap, RefreshCw, AlertTriangle, Radio } from "lucide-react";
+import { Lightbulb, ToggleLeft, ToggleRight, Zap, RefreshCw, AlertTriangle, Radio, Cloud, CloudOff, Clock } from "lucide-react";
 
 interface ControlsPanelProps {
   control: ControlState;
   onControlChange: (updated: Partial<ControlState>) => void;
   isSendingControl: boolean;
+  supabaseConnected?: boolean;
+  syncPending?: boolean;
 }
 
 export default function ControlsPanel({
   control,
   onControlChange,
   isSendingControl,
+  supabaseConnected = false,
+  syncPending = false,
 }: ControlsPanelProps) {
   const { ledState, relayState, reportingInterval } = control;
 
@@ -27,9 +31,37 @@ export default function ControlsPanel({
     onControlChange({ reportingInterval: Number(e.target.value) });
   };
 
+  // Render sync status badge
+  const renderSyncBadge = () => {
+    if (!supabaseConnected) {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+          <CloudOff className="w-3.5 h-3.5 shrink-0" />
+          <span>จัดเก็บแบบ Local (ออฟไลน์)</span>
+        </span>
+      );
+    }
+
+    if (syncPending) {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 animate-pulse">
+          <Clock className="w-3.5 h-3.5 shrink-0 animate-spin" />
+          <span>รอดำเนินการซิงค์ไปยังอินเทอร์เน็ต...</span>
+        </span>
+      );
+    }
+
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+        <Cloud className="w-3.5 h-3.5 shrink-0" />
+        <span>ซิงค์กับอินเทอร์เน็ตสำเร็จ (Cloud Synced)</span>
+      </span>
+    );
+  };
+
   return (
     <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-100 shadow-xs hover:shadow-md transition-all">
-      <div className="flex items-center justify-between border-b border-slate-50 pb-4 mb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-50 pb-4 mb-4">
         <div>
           <h2 className="text-base sm:text-lg font-bold font-display text-slate-800 flex items-center gap-2">
             <Zap className="w-5 h-5 text-blue-500" />
@@ -37,12 +69,15 @@ export default function ControlsPanel({
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">ส่งคำสั่งย้อนกลับไปยังบอร์ด ESP32 ทันทีที่บอร์ดดึงข้อมูลครั้งต่อไป</p>
         </div>
-        {isSendingControl && (
-          <span className="flex items-center gap-1.5 text-xs text-blue-600 font-medium animate-pulse">
-            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-            <span>กำลังส่ง...</span>
-          </span>
-        )}
+        <div className="flex items-center gap-2 flex-wrap sm:justify-end">
+          {renderSyncBadge()}
+          {isSendingControl && (
+            <span className="flex items-center gap-1.5 text-xs text-blue-600 font-medium animate-pulse bg-blue-50 px-2 py-1 rounded-full border border-blue-100">
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              <span>กำลังส่ง...</span>
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">

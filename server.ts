@@ -13,6 +13,9 @@ async function startServer() {
   // Multi-device local database state representing multiple locations
   interface DBDeviceState extends DeviceState {
     location: string;
+    syncPending?: boolean;
+    lastLocalUpdate?: number;
+    lastCloudSync?: number;
   }
 
   let devices: { [id: string]: DBDeviceState } = {
@@ -51,6 +54,9 @@ async function startServer() {
         { id: "s1_2", type: "SoilMoisture", name: "เซ็นเซอร์ความชื้นในดิน", pin: "GPIO34", unit: "%" },
         { id: "s1_3", type: "LDR", name: "เซ็นเซอร์ความเข้มแสงแดด", pin: "GPIO35", unit: "%" }
       ],
+      syncPending: false,
+      lastLocalUpdate: Date.now(),
+      lastCloudSync: 0,
     },
     "device_2": {
       location: "โรงเรือนที่ 2 (เชียงใหม่ - ปลูกสตรอว์เบอร์รีพรีเมียม)",
@@ -86,6 +92,9 @@ async function startServer() {
         { id: "s2_1", type: "DHT11", name: "เซ็นเซอร์สภาพอากาศ", pin: "GPIO22", unit: "°C" },
         { id: "s2_2", type: "SoilMoisture", name: "ความชื้นดินแปลงสตรอว์เบอร์รี", pin: "GPIO32", unit: "%" }
       ],
+      syncPending: false,
+      lastLocalUpdate: Date.now(),
+      lastCloudSync: 0,
     },
     "device_3": {
       location: "โรงเรือนที่ 3 (ขอนแก่น - แปลงเมลอนไฮโดร)",
@@ -121,6 +130,9 @@ async function startServer() {
         { id: "s3_1", type: "DS18B20", name: "เซ็นเซอร์อุณหภูมิน้ำเมลอน", pin: "GPIO4", unit: "°C" },
         { id: "s3_2", type: "BH1750", name: "เซ็นเซอร์วัดแสงดิจิตอล", pin: "I2C (SDA=21, SCL=22)", unit: "lux" }
       ],
+      syncPending: false,
+      lastLocalUpdate: Date.now(),
+      lastCloudSync: 0,
     }
   };
 
@@ -372,6 +384,7 @@ async function startServer() {
         simulationEnabled: false,
         telemetry: dev.telemetry,
         sensors: dev.sensors || [],
+        syncPending: dev.syncPending || false,
       };
     });
     res.json({
@@ -771,6 +784,8 @@ async function startServer() {
     }
 
     if (changes.length > 0) {
+      dev.lastLocalUpdate = Date.now();
+      dev.syncPending = true;
       await addLog(deviceId, "control", `[แดชบอร์ด] สั่งการควบคุม -> ${changes.join(", ")}`);
     }
 
@@ -789,12 +804,19 @@ async function startServer() {
           .eq("id", deviceId);
 
         if (error) throw error;
+
+        dev.syncPending = false;
+        dev.lastCloudSync = Date.now();
+        dev.supabaseConnected = true;
+        dev.supabaseError = null;
       } catch (err: any) {
-        console.warn("Failed to update controls in Supabase", err.message);
+        console.warn("Failed to update controls in Supabase, keeping syncPending flag as true for background retries", err.message);
+        dev.supabaseConnected = false;
+        dev.supabaseError = `ออฟไลน์ (จะอัปเดตเมื่อต่อเน็ต): ${err.message || err}`;
       }
     }
 
-    res.json({ success: true, control: dev.control });
+    res.json({ success: true, control: dev.control, syncPending: dev.syncPending });
   });
 
   // 3. Receive HTTP POST request from ESP32 with sensor values
@@ -990,6 +1012,99 @@ async function startServer() {
     await addLog(deviceId, "info", "รีเซ็ตระบบแดชบอร์ดสำเร็จ");
     res.json({ success: true });
   });
+
+  // Periodic background synchronization loop (runs every 6 seconds)
+  setInterval(async () => {
+    if (!isSupabaseConfigured()) return;
+
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    for (const deviceId of Object.keys(devices)) {
+      const dev = devices[deviceId];
+      if (!dev) continue;
+
+      if (dev.syncPending) {
+        try {
+          console.log(`[Background Sync] Pending controls sync detected for ${deviceId}. Syncing to Supabase...`);
+          const { error } = await supabase
+            .from("esp32_control")
+            .update({
+              led_state: dev.control.ledState,
+              relay_state: dev.control.relayState,
+              reporting_interval: dev.control.reportingInterval,
+              updated_at: new Date().toISOString()
+            })
+            .eq("id", deviceId);
+
+          if (error) throw error;
+
+          dev.syncPending = false;
+          dev.lastCloudSync = Date.now();
+          dev.supabaseConnected = true;
+          dev.supabaseError = null;
+
+          await addLog(
+            deviceId, 
+            "success", 
+            `☁️ [ระบบซิงค์อัตโนมัติ] สัญญาณอินเทอร์เน็ตกลับมาใช้งานได้แล้ว! ซิงค์สวิตช์ควบคุมล่าสุดจากเครื่องคอมพิวเตอร์ Local ไปยังเซิร์ฟเวอร์ Supabase บนระบบคลาวด์เรียบร้อย`
+          );
+          console.log(`[Background Sync] Successfully synced pending controls to Supabase for ${deviceId}`);
+        } catch (err: any) {
+          console.warn(`[Background Sync] Sync failed for ${deviceId}. Device remains unsynced:`, err.message || err);
+          dev.supabaseConnected = false;
+          dev.supabaseError = `ออฟไลน์ (กำลังรอซิงค์เมื่อมีเน็ต): ${err.message || err}`;
+        }
+      } else {
+        // If there are no pending local updates, quietly poll Supabase for any remote updates (every 6s)
+        // so we support cloud control (from internet) alongside local computer control!
+        // To prevent collision, we only pull if local was not updated in the last 12 seconds.
+        if (dev.lastLocalUpdate && (Date.now() - dev.lastLocalUpdate > 12000)) {
+          try {
+            const { data, error } = await supabase
+              .from("esp32_control")
+              .select("*")
+              .eq("id", deviceId)
+              .single();
+
+            if (!error && data) {
+              const cloudLed = data.led_state;
+              const cloudRelay = data.relay_state;
+              const cloudInt = data.reporting_interval;
+
+              if (cloudLed !== dev.control.ledState || cloudRelay !== dev.control.relayState || cloudInt !== dev.control.reportingInterval) {
+                const changes: string[] = [];
+                if (cloudLed !== dev.control.ledState) {
+                  dev.control.ledState = cloudLed;
+                  changes.push(`LED: ${cloudLed ? "เปิด (ON)" : "ปิด (OFF)"}`);
+                }
+                if (cloudRelay !== dev.control.relayState) {
+                  dev.control.relayState = cloudRelay;
+                  changes.push(`Relay: ${cloudRelay ? "เปิด (ON)" : "ปิด (OFF)"}`);
+                }
+                if (cloudInt !== dev.control.reportingInterval) {
+                  dev.control.reportingInterval = cloudInt;
+                  changes.push(`รอบความถี่: ${cloudInt} วินาที`);
+                }
+
+                dev.lastCloudSync = Date.now();
+                dev.supabaseConnected = true;
+                dev.supabaseError = null;
+
+                await addLog(
+                  deviceId,
+                  "info",
+                  `☁️ [ระบบซิงค์คลาวด์] ดึงค่าคำสั่งควบคุมล่าสุดจากระบบอินเทอร์เน็ตมาอัปเดตลงเครื่อง Local เรียบร้อย (${changes.join(", ")})`
+                );
+              }
+            }
+          } catch (err) {
+            // Quietly ignore network polling errors
+          }
+        }
+      }
+    }
+  }, 6000);
 
 
   // --- Vite Middleware Integration ---
