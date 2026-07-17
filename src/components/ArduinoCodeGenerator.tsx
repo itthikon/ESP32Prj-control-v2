@@ -112,8 +112,8 @@ ${sensorComments} */
 #include <ArduinoJson.h> // ต้องลง Library "ArduinoJson" โดย Benoit Blanchon ผ่าน Library Manager
 ${libraryIncludes}
 // --- กำหนดค่าเชื่อมต่อ Wi-Fi ---
-const char* ssid     = "${ssid}";
-const char* password = "${password}";
+char current_ssid[64]     = "${ssid}";
+char current_password[64] = "${password}";
 
 // --- กำหนดค่า API Endpoint ของเว็บแดชบอร์ด ---
 const char* serverApiUrl = "${serverUrl}/api/device/telemetry?id=${deviceId}";
@@ -180,12 +180,123 @@ ${readLogic}
   }
 }
 
+// ฟังก์ชันวิเคราะห์และแสดงสถานะรายละเอียดการเชื่อมต่อ Wi-Fi
+void printWiFiStatus(wl_status_t status) {
+  Serial.print("รายละเอียดสถานะ: ");
+  switch(status) {
+    case WL_IDLE_STATUS: Serial.println("IDLE (กำลังรอการทำงาน)"); break;
+    case WL_NO_SSID_AVAIL: Serial.println("ไม่พบสัญญาณ Wi-Fi ที่ระบุ (โปรดตรวจสอบระยะหรือชื่อ SSID)"); break;
+    case WL_CONNECT_FAILED: Serial.println("รหัสผ่านไม่ถูกต้อง (Connection Failed)"); break;
+    case WL_CONNECTION_LOST: Serial.println("การเชื่อมต่อหลุด (Connection Lost)"); break;
+    case WL_DISCONNECTED: Serial.println("ถูกตัดการเชื่อมต่อ (Disconnected)"); break;
+    default: Serial.print("รหัสความผิดพลาด: "); Serial.println(status); break;
+  }
+}
+
+// ฟังก์ชันสแกนหาเครือข่าย Wi-Fi และเปลี่ยนการตั้งค่าผ่านสาย Serial
+void scanAndConfigureWiFi() {
+  Serial.println("\\n===== กำลังค้นหาสัญญาณ Wi-Fi ที่เปิดอยู่ในบริเวณนี้... =====");
+  WiFi.disconnect();
+  delay(200);
+  
+  int n = WiFi.scanNetworks();
+  if (n == 0) {
+    Serial.println("ไม่พบสัญญาณ Wi-Fi ใดๆ ในพื้นที่");
+  } else {
+    Serial.print("พบเครือข่ายทั้งหมด "); Serial.print(n); Serial.println(" รายการดังนี้:");
+    for (int i = 0; i < n; ++i) {
+      Serial.print(i + 1);
+      Serial.print(": ");
+      Serial.print(WiFi.SSID(i));
+      Serial.print(" (ความแรง: ");
+      Serial.print(WiFi.RSSI(i));
+      Serial.print(" dBm)");
+      Serial.println((WiFi.encryptionType(i) == WIFI_AUTH_OPEN) ? " [เปิดสาธารณะ]" : " [ต้องใช้รหัสผ่าน]");
+      delay(10);
+    }
+  }
+
+  Serial.println("\\n>>> หากต้องการเชื่อมต่อกับ Wi-Fi ใหม่โปรดพิมพ์เลขลำดับ หรือ พิมพ์ชื่อ SSID ใหม่ แล้วกด Enter/Send");
+  Serial.println("(ระบบจะรอข้อมูลเป็นเวลา 20 วินาที... หากไม่มีการพิมพ์ จะเชื่อมต่อ Wi-Fi หลักต่อ)");
+
+  unsigned long startWait = millis();
+  String selectedSSID = "";
+  String newPassword = "";
+
+  // ล้างอินพุตที่ค้างอยู่ใน Serial Buffer
+  while (Serial.available() > 0) { Serial.read(); }
+
+  while (millis() - startWait < 20000) {
+    if (Serial.available() > 0) {
+      String input = Serial.readStringUntil('\\n');
+      input.trim();
+      if (input.length() > 0) {
+        int choice = input.toInt();
+        if (choice > 0 && choice <= n) {
+          selectedSSID = WiFi.SSID(choice - 1);
+        } else {
+          selectedSSID = input;
+        }
+        break;
+      }
+    }
+    // กะพริบไฟ LED ถี่ๆ บอกให้รู้ว่ารอกรอบอินพุต
+    digitalWrite(PIN_LED, HIGH); delay(100);
+    digitalWrite(PIN_LED, LOW); delay(100);
+  }
+
+  if (selectedSSID.length() > 0) {
+    Serial.print(">> เลือกเครือข่ายเรียบร้อย: "); Serial.println(selectedSSID);
+    Serial.println(">>> โปรดพิมพ์รหัสผ่านใหม่ (Password) แล้วกด Enter/Send (หากไม่มีให้กด Enter ผ่านได้เลย):");
+    
+    while (Serial.available() > 0) { Serial.read(); }
+    
+    startWait = millis();
+    while (millis() - startWait < 20000) {
+      if (Serial.available() > 0) {
+        newPassword = Serial.readStringUntil('\\n');
+        newPassword.trim();
+        break;
+      }
+      digitalWrite(PIN_LED, HIGH); delay(100);
+      digitalWrite(PIN_LED, LOW); delay(100);
+    }
+
+    // บันทึกการเปลี่ยนแปลงกลับเข้าตัวแปรหลักเพื่อเชื่อมต่อถัดไป
+    selectedSSID.toCharArray(current_ssid, 64);
+    newPassword.toCharArray(current_password, 64);
+
+    Serial.println("\\n>> กำลังบันทึกการปรับปรุงระบบและลองทดสอบเข้าสู่ไวไฟ...");
+    Serial.print("SSID ใหม่: "); Serial.println(current_ssid);
+    
+    WiFi.begin(current_ssid, current_password);
+    int attempts = 0;
+    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+      digitalWrite(PIN_LED, HIGH); delay(250);
+      digitalWrite(PIN_LED, LOW); delay(250);
+      Serial.print(".");
+      attempts++;
+    }
+
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.println("\\nเชื่อมต่อสำเร็จเรียบร้อย!");
+      Serial.print("IP Address: "); Serial.println(WiFi.localIP());
+      digitalWrite(PIN_LED, HIGH);
+    } else {
+      Serial.print("\\nเชื่อมต่อไม่สำเร็จ! ");
+      printWiFiStatus(WiFi.status());
+    }
+  } else {
+    Serial.println("ไม่มีอินพุตเข้ามาภายในเวลาที่กำหนด ดำเนินการต่อตามวงรอบด้วยข้อมูลเดิม...");
+  }
+}
+
 // ฟังก์ชันเชื่อมต่อ Wi-Fi
 void connectToWiFi() {
   Serial.print("กำลังเชื่อมต่อกับ Wi-Fi: ");
-  Serial.println(ssid);
+  Serial.println(current_ssid);
   
-  WiFi.begin(ssid, password);
+  WiFi.begin(current_ssid, current_password);
   
   int attempts = 0;
   // กะพริบไฟ LED สีน้ำเงิน/ฟ้า ขณะกำลังเชื่อมต่อ Wi-Fi
@@ -206,8 +317,12 @@ void connectToWiFi() {
     // เปิดไฟสีน้ำเงิน/ฟ้าค้างไว้เมื่อเชื่อมต่อสำเร็จ
     digitalWrite(PIN_LED, HIGH);
   } else {
-    Serial.println("\\nไม่สามารถเชื่อมต่อ Wi-Fi ได้ จะลองใหม่อีกครั้งในวงรอบถัดไป...");
+    Serial.println("\\nไม่สามารถเชื่อมต่อ Wi-Fi ได้!");
+    printWiFiStatus(WiFi.status());
     digitalWrite(PIN_LED, LOW); // ดับไฟหากเชื่อมต่อล้มเหลว
+    
+    // เรียกสแกนเครือข่ายเพื่ออำนวยความสะดวกในการแก้ไขปัญหาและเลือกเชื่อมต่อใหม่
+    scanAndConfigureWiFi();
   }
 }
 
