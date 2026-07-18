@@ -55,6 +55,11 @@ const createDefaultDeviceState = (): DeviceState => {
     ],
     supabaseConnected: false,
     supabaseError: null,
+    sensors: [
+      { id: "s1_1", type: "DHT22", name: "เซ็นเซอร์อุณหภูมิอากาศหลัก", pin: "GPIO23", unit: "°C" },
+      { id: "s1_2", type: "SoilMoisture", name: "เซ็นเซอร์ความชื้นในดิน", pin: "GPIO34", unit: "%" },
+      { id: "s1_3", type: "LDR", name: "เซ็นเซอร์ความเข้มแสงแดด", pin: "GPIO35", unit: "%" }
+    ],
   };
 };
 
@@ -733,7 +738,11 @@ export default function App() {
             </div>
 
             {/* 2. Primary Metrics Row */}
-            <SensorGrid telemetry={deviceState.telemetry} isOnline={deviceState.isOnline} />
+            <SensorGrid 
+              telemetry={deviceState.telemetry} 
+              isOnline={deviceState.isOnline} 
+              sensors={deviceState.sensors || []} 
+            />
 
             {/* 3. Controls Panels */}
             <ControlsPanel
