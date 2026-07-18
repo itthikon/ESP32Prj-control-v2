@@ -11,7 +11,8 @@ import DeviceSelectorPanel from "./components/DeviceSelectorPanel";
 import SensorConfigManager from "./components/SensorConfigManager";
 import DesktopAppPanel from "./components/DesktopAppPanel";
 import LoginScreen from "./components/LoginScreen";
-import { Info, HelpCircle, ArrowUpRight, Cpu, BookOpen, Layers, Database, RefreshCw, AlertCircle, Laptop } from "lucide-react";
+import UserManagerPanel from "./components/UserManagerPanel";
+import { Info, HelpCircle, ArrowUpRight, Cpu, BookOpen, Layers, Database, RefreshCw, AlertCircle, Laptop, Users } from "lucide-react";
 
 // Helper to generate default state for client-side fallback simulation
 const createDefaultDeviceState = (): DeviceState => {
@@ -95,6 +96,13 @@ export default function App() {
       if (timePassed < oneDayInMs) {
         setIsAuthenticated(true);
         setCurrentUser(storedUser);
+        
+        // Ensure user role exists in localStorage on recovery
+        if (!localStorage.getItem("esp32_user_role")) {
+          const defaultRole = storedUser.toLowerCase() === "admin" ? "admin" : 
+                             (storedUser.toLowerCase() === "operator" ? "operator" : "viewer");
+          localStorage.setItem("esp32_user_role", defaultRole);
+        }
       } else {
         // Expired (over 1 day)
         localStorage.removeItem("esp32_user");
@@ -106,8 +114,9 @@ export default function App() {
     setIsAuthChecking(false);
   }, []);
 
-  const handleLoginSuccess = (username: string) => {
+  const handleLoginSuccess = (username: string, role: string) => {
     localStorage.setItem("esp32_user", username);
+    localStorage.setItem("esp32_user_role", role);
     localStorage.setItem("esp32_login_time", Date.now().toString());
     setIsAuthenticated(true);
     setCurrentUser(username);
@@ -115,6 +124,7 @@ export default function App() {
 
   const handleLogout = () => {
     localStorage.removeItem("esp32_user");
+    localStorage.removeItem("esp32_user_role");
     localStorage.removeItem("esp32_login_time");
     setIsAuthenticated(false);
     setCurrentUser("");
@@ -696,6 +706,17 @@ export default function App() {
             <Laptop className="w-4 h-4" />
             <span>แอปติดตั้งบนเครื่อง (Desktop App)</span>
           </button>
+          <button
+            onClick={() => setActiveTab("users")}
+            className={`px-4 py-2.5 text-sm font-semibold rounded-t-xl transition-all border-b-2 cursor-pointer flex items-center gap-2 ${
+              activeTab === "users"
+                ? "border-blue-600 text-blue-600 bg-white shadow-2xs"
+                : "border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/50"
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            <span>จัดการผู้ใช้งาน & สิทธิ์</span>
+          </button>
         </div>
 
         {/* Tab Content Rendering */}
@@ -823,6 +844,13 @@ export default function App() {
 
         {activeTab === "desktop" && (
           <DesktopAppPanel />
+        )}
+
+        {activeTab === "users" && (
+          <UserManagerPanel 
+            currentUser={currentUser} 
+            isClientFallback={isClientFallback} 
+          />
         )}
 
       </main>

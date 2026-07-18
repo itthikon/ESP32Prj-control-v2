@@ -57,3 +57,11 @@ export interface SupabaseConfig {
   url: string;
   anonKey: string;
 }
+
+export interface UserAccount {
+  username: string;
+  password?: string;
+  role: 'admin' | 'operator' | 'viewer';
+  lastActive?: string;
+}
+

@@ -19,15 +19,30 @@ export default function ControlsPanel({
 }: ControlsPanelProps) {
   const { ledState, relayState, reportingInterval } = control;
 
+  const userRole = localStorage.getItem("esp32_user_role") || "viewer";
+  const isViewer = userRole === "viewer";
+
   const handleLedToggle = () => {
+    if (isViewer) {
+      alert("❌ คุณไม่มีสิทธิ์ควบคุมอุปกรณ์: บัญชีของคุณอยู่ในสถานะ 'ผู้เข้าชมทั่วไป (Viewer)' ซึ่งสามารถอ่านค่าเซ็นเซอร์ได้เพียงอย่างเดียว");
+      return;
+    }
     onControlChange({ ledState: !ledState });
   };
 
   const handleRelayToggle = () => {
+    if (isViewer) {
+      alert("❌ คุณไม่มีสิทธิ์ควบคุมอุปกรณ์: บัญชีของคุณอยู่ในสถานะ 'ผู้เข้าชมทั่วไป (Viewer)' ซึ่งสามารถอ่านค่าเซ็นเซอร์ได้เพียงอย่างเดียว");
+      return;
+    }
     onControlChange({ relayState: !relayState });
   };
 
   const handleIntervalChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    if (isViewer) {
+      alert("❌ คุณไม่มีสิทธิ์แก้ไขการทำงาน: บัญชีของคุณอยู่ในสถานะ 'ผู้เข้าชมทั่วไป (Viewer)'");
+      return;
+    }
     onControlChange({ reportingInterval: Number(e.target.value) });
   };
 
@@ -79,6 +94,15 @@ export default function ControlsPanel({
           )}
         </div>
       </div>
+
+      {isViewer && (
+        <div className="mb-4 bg-rose-50 border border-rose-100 text-rose-800 rounded-xl px-4 py-2.5 text-xs flex items-center gap-2.5 animate-fade-in">
+          <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
+          <span>
+            <b>🚫 บัญชีโหมดอ่านอย่างเดียว (Read-only):</b> คุณล็อกอินด้วยสิทธิ์ <b>ผู้เข้าชม (Viewer)</b> ไม่สามารถสั่งการควบคุม หรือเปลี่ยนแปลงความถี่ของบอร์ด ESP32 ได้
+          </span>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
         

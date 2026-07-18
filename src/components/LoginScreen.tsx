@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Lock, User, Eye, EyeOff, ShieldCheck, KeyRound, Cpu, Terminal, AlertCircle, RefreshCw } from "lucide-react";
 
 interface LoginScreenProps {
-  onLoginSuccess: (username: string) => void;
+  onLoginSuccess: (username: string, role: string) => void;
 }
 
 export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
@@ -16,7 +16,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const defaultUser = "admin";
   const defaultPass = "admin1234";
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -31,15 +31,70 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 
     setIsSubmitting(true);
 
-    // Simulate network delay for realistic visual loading feel
-    setTimeout(() => {
-      if (username.toLowerCase() === defaultUser && password === defaultPass) {
-        onLoginSuccess(username);
+    try {
+      // Try to log in via real backend API
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: username.trim(), password }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        onLoginSuccess(data.username, data.role);
+        return;
       } else {
-        setError("ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง! (กรุณาใช้บัญชีเริ่มต้นด้านล่าง)");
+        const errData = await response.json().catch(() => ({}));
+        setError(errData.error || "ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง");
         setIsSubmitting(false);
+        return;
       }
-    }, 600);
+    } catch (apiErr) {
+      console.warn("API login failed, falling back to simulated localStorage authentication:", apiErr);
+      
+      // Fallback: Check localStorage custom users (for offline / simulator mode)
+      setTimeout(() => {
+        const localUsersJson = localStorage.getItem("esp32_custom_users");
+        let authenticated = false;
+        let detectedRole = "viewer";
+
+        if (localUsersJson) {
+          try {
+            const customUsers = JSON.parse(localUsersJson);
+            const matched = customUsers.find(
+              (u: any) => u.username.toLowerCase() === username.trim().toLowerCase() && u.password === password
+            );
+            if (matched) {
+              authenticated = true;
+              detectedRole = matched.role;
+            }
+          } catch (e) {
+            console.error("Failed to parse custom users:", e);
+          }
+        }
+
+        // Check fallback defaults
+        if (!authenticated) {
+          if (username.toLowerCase() === defaultUser && password === defaultPass) {
+            authenticated = true;
+            detectedRole = "admin";
+          } else if (username.toLowerCase() === "operator" && password === "operator1234") {
+            authenticated = true;
+            detectedRole = "operator";
+          } else if (username.toLowerCase() === "viewer" && password === "viewer1234") {
+            authenticated = true;
+            detectedRole = "viewer";
+          }
+        }
+
+        if (authenticated) {
+          onLoginSuccess(username, detectedRole);
+        } else {
+          setError("ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง! (กรุณาใช้บัญชีที่ถูกต้อง)");
+          setIsSubmitting(false);
+        }
+      }, 600);
+    }
   };
 
   return (
@@ -153,16 +208,20 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         <div className="mt-6 pt-5 border-t border-slate-700/60">
           <span className="font-bold text-[11px] text-slate-300 block mb-2 flex items-center gap-1">
             <Terminal className="w-3.5 h-3.5 text-blue-400" />
-            <span>🔑 บัญชีเข้าใช้งานสำหรับผู้ควบคุม (Default)</span>
+            <span>🔑 บัญชีผู้ใช้เริ่มต้นสำหรับทดสอบสิทธิ์</span>
           </span>
-          <div className="bg-slate-900/60 rounded-xl p-2.5 border border-slate-700/40 text-[10px] sm:text-xs text-slate-400 space-y-1 font-mono">
-            <div className="flex justify-between items-center">
-              <span>Username:</span>
-              <span className="text-white bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">admin</span>
+          <div className="bg-slate-900/60 rounded-xl p-3 border border-slate-700/40 text-[10px] sm:text-xs text-slate-400 space-y-2 font-mono">
+            <div className="flex justify-between items-center pb-1 border-b border-slate-800">
+              <span className="text-blue-300 font-bold">แอดมิน (Admin)</span>
+              <span className="text-white bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">admin / admin1234</span>
+            </div>
+            <div className="flex justify-between items-center pb-1 border-b border-slate-800">
+              <span className="text-emerald-300 font-bold">ผู้ควบคุม (Operator)</span>
+              <span className="text-white bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">operator / operator1234</span>
             </div>
             <div className="flex justify-between items-center">
-              <span>Password:</span>
-              <span className="text-white bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">admin1234</span>
+              <span className="text-amber-300 font-bold">ผู้เข้าชม (Viewer)</span>
+              <span className="text-white bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">viewer / viewer1234</span>
             </div>
           </div>
         </div>

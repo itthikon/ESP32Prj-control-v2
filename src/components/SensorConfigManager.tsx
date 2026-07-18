@@ -374,6 +374,17 @@ export default function SensorConfigManager({
     }
   };
 
+  const userRole = localStorage.getItem("esp32_user_role") || "viewer";
+  const isViewer = userRole === "viewer";
+
+  const handleOpenAddFormLocal = () => {
+    if (isViewer) {
+      alert("❌ คุณไม่มีสิทธิ์จัดการเซ็นเซอร์: บัญชีของคุณอยู่ในสถานะ 'ผู้เข้าชมทั่วไป (Viewer)' ไม่ได้รับอนุญาตให้เพิ่มพินอุปกรณ์ฮาร์ดแวร์");
+      return;
+    }
+    handleOpenAddForm();
+  };
+
   return (
     <div className="bg-white rounded-2xl border border-slate-100 shadow-xs hover:shadow-md transition-all overflow-hidden">
       {/* Head Banner */}
@@ -391,14 +402,25 @@ export default function SensorConfigManager({
             </p>
           </div>
         </div>
-        <button
-          onClick={handleOpenAddForm}
-          className="flex items-center justify-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs hover:shadow-sm cursor-pointer transition-all self-stretch sm:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          <span>เพิ่มเซ็นเซอร์ชิ้นใหม่</span>
-        </button>
+        {!isViewer && (
+          <button
+            onClick={handleOpenAddFormLocal}
+            className="flex items-center justify-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs hover:shadow-sm cursor-pointer transition-all self-stretch sm:self-auto"
+          >
+            <Plus className="w-4 h-4" />
+            <span>เพิ่มเซ็นเซอร์ชิ้นใหม่</span>
+          </button>
+        )}
       </div>
+
+      {isViewer && (
+        <div className="mx-5 mt-4 sm:mx-6 bg-rose-50 border border-rose-100 text-rose-800 rounded-xl px-4 py-2.5 text-xs flex items-center gap-2.5 animate-fade-in">
+          <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+          <span>
+            <b>🚫 โหมดอ่านอย่างเดียว (Read-only):</b> คุณล็อกอินด้วยสิทธิ์ <b>ผู้เข้าชม (Viewer)</b> ไม่สามารถปรับแต่งพินเชื่อมต่อ GPIO เพิ่ม ลบ หรือแก้ไขโครงสร้างเซ็นเซอร์บอร์ดได้
+          </span>
+        </div>
+      )}
 
       <div className="p-5 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Side: Sensors List */}
@@ -528,22 +550,24 @@ export default function SensorConfigManager({
                         </div>
 
                         {/* Interactive Edit / Trash controls visible on hover */}
-                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all">
-                          <button
-                            onClick={(e) => handleStartEdit(sensor, e)}
-                            className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all cursor-pointer"
-                            title="แก้ไขข้อมูลเซ็นเซอร์"
-                          >
-                            <Edit2 className="w-3 h-3" />
-                          </button>
-                          <button
-                            onClick={(e) => handleDelete(sensor.id, sensor.name, e)}
-                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
-                            title="ลบเซ็นเซอร์ออก"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </div>
+                        {!isViewer && (
+                          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all">
+                            <button
+                              onClick={(e) => handleStartEdit(sensor, e)}
+                              className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all cursor-pointer"
+                              title="แก้ไขข้อมูลเซ็นเซอร์"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={(e) => handleDelete(sensor.id, sensor.name, e)}
+                              className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
+                              title="ลบเซ็นเซอร์ออก"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

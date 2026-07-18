@@ -372,6 +372,82 @@ async function startServer() {
 
   // --- API Routes ---
 
+  // --- User Account Management State & Routes ---
+  let users: any[] = [
+    { username: "admin", password: "admin1234", role: "admin", lastActive: new Date().toLocaleTimeString("th-TH") + " " + new Date().toLocaleDateString("th-TH") },
+    { username: "operator", password: "operator1234", role: "operator", lastActive: "ยังไม่เคยเข้าสู่ระบบ" },
+    { username: "viewer", password: "viewer1234", role: "viewer", lastActive: "ยังไม่เคยเข้าสู่ระบบ" }
+  ];
+
+  // Login Endpoint
+  app.post("/api/auth/login", (req, res) => {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: "กรุณากรอกชื่อผู้ใช้งานและรหัสผ่าน" });
+    }
+    const user = users.find(u => u.username.toLowerCase() === username.toLowerCase() && u.password === password);
+    if (user) {
+      user.lastActive = new Date().toLocaleTimeString("th-TH") + " " + new Date().toLocaleDateString("th-TH");
+      res.json({
+        success: true,
+        username: user.username,
+        role: user.role
+      });
+    } else {
+      res.status(401).json({ error: "ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง" });
+    }
+  });
+
+  // Get users list
+  app.get("/api/users", (req, res) => {
+    res.json({ users });
+  });
+
+  // Add user
+  app.post("/api/users/add", (req, res) => {
+    const { username, password, role } = req.body;
+    if (!username || !password || !role) {
+      return res.status(400).json({ error: "กรุณาระบุข้อมูลให้ครบถ้วน" });
+    }
+    if (users.some(u => u.username.toLowerCase() === username.toLowerCase())) {
+      return res.status(400).json({ error: "ชื่อผู้ใช้งานนี้มีอยู่ในระบบแล้ว" });
+    }
+    const newUser = {
+      username: username.trim(),
+      password: password.trim(),
+      role,
+      lastActive: "ยังไม่เคยเข้าสู่ระบบ"
+    };
+    users.push(newUser);
+    res.json({ success: true, user: newUser });
+  });
+
+  // Update user role or password
+  app.post("/api/users/update", (req, res) => {
+    const { username, password, role } = req.body;
+    const user = users.find(u => u.username.toLowerCase() === username.toLowerCase());
+    if (!user) {
+      return res.status(404).json({ error: "ไม่พบผู้ใช้งานที่ต้องการแก้ไข" });
+    }
+    if (password) user.password = password.trim();
+    if (role) user.role = role;
+    res.json({ success: true, user });
+  });
+
+  // Delete user
+  app.post("/api/users/delete", (req, res) => {
+    const { username } = req.body;
+    if (username.toLowerCase() === "admin") {
+      return res.status(400).json({ error: "ไม่สามารถลบบัญชีผู้ใช้เริ่มต้น (admin) ได้" });
+    }
+    const initialLength = users.length;
+    users = users.filter(u => u.username.toLowerCase() !== username.toLowerCase());
+    if (users.length === initialLength) {
+      return res.status(404).json({ error: "ไม่พบผู้ใช้งานที่ต้องการลบ" });
+    }
+    res.json({ success: true });
+  });
+
   // Local app version management
   let localAppVersion = "1.0.0";
   const ONLINE_APP_VERSION = "1.3.2"; // The cloud app is currently at version 1.3.2

@@ -19,6 +19,9 @@ export default function SupabaseSettingsPanel({
   const [isSaving, setIsSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
+  const userRole = localStorage.getItem("esp32_user_role") || "viewer";
+  const isAdmin = userRole === "admin";
+
   // Synchronize internal inputs with current config
   useEffect(() => {
     if (currentConfig) {
@@ -172,6 +175,16 @@ ON CONFLICT (id) DO NOTHING;
           กำหนดรหัสเชื่อมต่อ Supabase Database ได้ทันทีที่นี่เพื่อจัดเก็บข้อมูลเซ็นเซอร์ ประวัติบันทึกย้อนหลัง และสถานะสวิตช์ควบคุมแบบถาวรบนระบบคลาวด์จริง โดยรองรับการบันทึกแยกตามสถานที่/อุปกรณ์ (Multi-Device)
         </p>
 
+        {/* Header Alert for Non-Admins */}
+        {!isAdmin && (
+          <div className="mb-5 bg-rose-50 border border-rose-100 text-rose-800 rounded-xl px-4 py-3 text-xs flex items-center gap-2.5">
+            <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+            <span>
+              <b>🚫 ปฏิเสธสิทธิ์เข้าถึง (Access Denied):</b> เฉพาะบัญชีสิทธิ์ <b>ผู้ดูแลระบบสูงสุด (Admin)</b> เท่านั้นที่สามารถอัปเดต ตั้งค่าคีย์ หรือเชื่อมโยงข้อมูลกับระบบ Supabase ได้ บัญชีของคุณขณะนี้มีสิทธิ์ระดับทั่วไปเท่านั้น
+            </span>
+          </div>
+        )}
+
         <form onSubmit={handleSaveConfig} className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* URL Input */}
@@ -183,10 +196,11 @@ ON CONFLICT (id) DO NOTHING;
               <input
                 type="url"
                 required
+                disabled={isSaving || !isAdmin}
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder="https://your-project.supabase.co"
-                className="w-full bg-slate-50 border border-slate-200 focus:border-blue-500 focus:bg-white rounded-xl py-2.5 px-3.5 text-xs font-mono text-slate-800 placeholder-slate-400 transition-all outline-none"
+                className={`w-full bg-slate-50 border border-slate-200 focus:border-blue-500 focus:bg-white rounded-xl py-2.5 px-3.5 text-xs font-mono text-slate-800 placeholder-slate-400 transition-all outline-none ${!isAdmin ? "opacity-60 cursor-not-allowed" : ""}`}
               />
               <p className="text-[10px] text-slate-400">
                 หาได้จาก: Settings &gt; API &gt; Project URL
@@ -202,10 +216,11 @@ ON CONFLICT (id) DO NOTHING;
               <input
                 type="text"
                 required
+                disabled={isSaving || !isAdmin}
                 value={anonKey}
                 onChange={(e) => setAnonKey(e.target.value)}
                 placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                className="w-full bg-slate-50 border border-slate-200 focus:border-blue-500 focus:bg-white rounded-xl py-2.5 px-3.5 text-xs font-mono text-slate-800 placeholder-slate-400 transition-all outline-none"
+                className={`w-full bg-slate-50 border border-slate-200 focus:border-blue-500 focus:bg-white rounded-xl py-2.5 px-3.5 text-xs font-mono text-slate-800 placeholder-slate-400 transition-all outline-none ${!isAdmin ? "opacity-60 cursor-not-allowed" : ""}`}
               />
               <p className="text-[10px] text-slate-400">
                 หาได้จาก: Settings &gt; API &gt; anon public key
@@ -228,31 +243,33 @@ ON CONFLICT (id) DO NOTHING;
           )}
 
           {/* Buttons Row */}
-          <div className="flex items-center gap-3 pt-2">
-            <button
-              type="submit"
-              disabled={isSaving}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2.5 px-5 rounded-xl transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
-            >
-              {isSaving ? (
-                <RefreshCw className="w-4 h-4 animate-spin" />
-              ) : (
-                <Check className="w-4 h-4" />
-              )}
-              <span>บันทึกและเชื่อมต่อ</span>
-            </button>
-
-            {currentConfig?.url && (
+          {isAdmin && (
+            <div className="flex items-center gap-3 pt-2">
               <button
-                type="button"
-                onClick={handleDisconnect}
+                type="submit"
                 disabled={isSaving}
-                className="bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 font-bold text-xs py-2.5 px-4 rounded-xl transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
+                className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2.5 px-5 rounded-xl transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
               >
-                <span>ตัดการเชื่อมต่อคลาวด์</span>
+                {isSaving ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Check className="w-4 h-4" />
+                )}
+                <span>บันทึกและเชื่อมต่อ</span>
               </button>
-            )}
-          </div>
+
+              {currentConfig?.url && (
+                <button
+                  type="button"
+                  onClick={handleDisconnect}
+                  disabled={isSaving}
+                  className="bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 font-bold text-xs py-2.5 px-4 rounded-xl transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
+                >
+                  <span>ตัดการเชื่อมต่อคลาวด์</span>
+                </button>
+              )}
+            </div>
+          )}
         </form>
       </div>
 
