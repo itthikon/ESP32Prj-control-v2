@@ -233,7 +233,7 @@ export default function UserManagerPanel({ currentUser, isClientFallback }: User
       return;
     }
 
-    const targetUser = showEditPassModal;
+    const targetUser = isAdmin ? showEditPassModal : currentUser;
     if (!targetUser) return;
 
     if (isClientFallback) {
@@ -346,6 +346,137 @@ export default function UserManagerPanel({ currentUser, isClientFallback }: User
 
   // Determine if current user has administrator authority to manage others
   const isAdmin = currentUserRole === "admin" || currentUser.toLowerCase() === "admin";
+
+  if (!isAdmin) {
+    // Return a beautiful personal profile settings UI
+    return (
+      <div className="space-y-6" id="personal-profile-panel-container">
+        {/* Profile Card */}
+        <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-xs animate-fade-in">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex gap-4 items-start">
+              <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl border border-indigo-100">
+                <User className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold font-display text-slate-800">ตั้งค่าโปรไฟล์ส่วนตัว (Profile Settings)</h3>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  ดูรายละเอียดข้อมูลประจำตัวของคุณและปรับเปลี่ยนรหัสผ่านเพื่อความปลอดภัยของระบบ IoT
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 p-4 bg-slate-50/80 rounded-xl border border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="text-slate-500 font-medium">ชื่อผู้ใช้:</span>
+              <span className="font-mono bg-slate-900 text-slate-100 px-2 py-0.5 rounded-md font-bold">{currentUser}</span>
+              <span className="text-slate-500 font-medium">ตำแหน่งปัจจุบัน:</span>
+              <span className={`px-2 py-0.5 rounded-full border text-[10px] font-bold flex items-center gap-1 ${getRoleColor(currentUserRole)}`}>
+                {getRoleIcon(currentUserRole)}
+                <span>{getRoleLabel(currentUserRole)}</span>
+              </span>
+            </div>
+            <div className="text-[11px] text-amber-600 font-semibold bg-amber-500/5 px-2.5 py-1 rounded-lg border border-amber-500/10">
+              🔒 บัญชีทั่วไป: ได้รับสิทธิ์เข้าถึงเฉพาะการตั้งค่ารหัสผ่านตัวเองเท่านั้น
+            </div>
+          </div>
+        </div>
+
+        {/* Success/Error Alerts */}
+        {error && (
+          <div className="bg-rose-50 border border-rose-100 rounded-xl p-4 text-xs text-rose-600 flex gap-2.5 items-center animate-fade-in">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {success && (
+          <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 text-xs text-emerald-700 flex gap-2.5 items-center animate-fade-in">
+            <ShieldCheck className="w-4 h-4 shrink-0" />
+            <span>{success}</span>
+          </div>
+        )}
+
+        {/* Change Password Card */}
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-xs max-w-lg overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
+            <Lock className="w-4.5 h-4.5 text-blue-500" />
+            <span className="font-bold text-sm text-slate-800">เปลี่ยนรหัสผ่านใหม่ (Change Password)</span>
+          </div>
+
+          <form onSubmit={handleChangePassword} className="p-6 space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-500">รหัสผ่านใหม่ (New Password)</label>
+              <div className="relative">
+                <input
+                  type={showNewPassword ? "text" : "password"}
+                  required
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full pl-3.5 pr-10 py-2.5 bg-slate-50 border border-slate-200 text-sm rounded-xl focus:ring-1 focus:ring-blue-500 focus:bg-white outline-none transition-all text-slate-800 font-mono font-bold"
+                  placeholder="กรอกรหัสผ่านใหม่ที่ต้องการ..."
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNewPassword(!showNewPassword)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+                >
+                  {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-500">ยืนยันรหัสผ่านใหม่อีกครั้ง</label>
+              <input
+                type="password"
+                required
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 text-sm rounded-xl focus:ring-1 focus:ring-blue-500 focus:bg-white outline-none transition-all text-slate-800 font-mono font-bold"
+                placeholder="ยืนยันรหัสผ่านใหม่อีกครั้ง..."
+              />
+            </div>
+
+            <div className="bg-slate-50 rounded-xl p-3.5 text-[11px] text-slate-500 leading-relaxed border border-slate-100">
+              💡 เพื่อความปลอดภัยของอุปกรณ์ IoT แนะนำให้ตั้งรหัสผ่านที่มีความยาวอย่างน้อย 8 ตัวอักษร และประกอบด้วยตัวอักษรและตัวเลข
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="submit"
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition-all cursor-pointer shadow-sm shadow-blue-500/10 hover:shadow-md active:scale-98"
+              >
+                บันทึกรหัสผ่านใหม่
+              </button>
+            </div>
+          </form>
+        </div>
+
+        {/* 3. Role Privileges Description */}
+        <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-xs">
+          <h4 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-1.5">
+            <Info className="w-4.5 h-4.5 text-indigo-500" />
+            <span>ระดับการอนุญาตและสิทธิ์เข้าถึง (Your Role Privileges)</span>
+          </h4>
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+            <div className="flex items-center gap-2">
+              {getRoleIcon(currentUserRole)}
+              <span className="font-bold text-slate-800 text-xs">คุณได้รับบทบาท: {getRoleLabel(currentUserRole)}</span>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              {currentUserRole === "operator" ? (
+                <span>คุณสามารถ เข้าควบคุมอุปกรณ์ฮาร์ดแวร์หลักของระบบ สลับเปิด/ปิดไฟ LED และรีเลย์ และดาวน์โหลดซอร์สโค้ด ESP32 (Arduino) ได้อย่างเต็มที่ ทว่าไม่สามารถจัดการบัญชีผู้อื่นหรือเข้าสู่การปรับปรุงรายละเอียด Supabase DB ได้</span>
+              ) : (
+                <span>คุณสามารถ เข้าชมข้อมูลเซ็นเซอร์ ค่าความชื้น ค่าดิน ค่าอุณหภูมิ และแสงแดด ตลอดจนวิเคราะห์กราฟข้อมูลย้อนหลังและบันทึกเหตุการณ์ (Logs) ทว่าไม่สามารถสลับเปิด/ปิดสวิตช์สั่งการอุปกรณ์หรือแก้ไขพินเซ็นเซอร์ได้</span>
+              )}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6" id="user-manager-panel-container">

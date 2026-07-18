@@ -204,27 +204,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           </button>
         </form>
 
-        {/* Credentials helper card */}
-        <div className="mt-6 pt-5 border-t border-slate-700/60">
-          <span className="font-bold text-[11px] text-slate-300 block mb-2 flex items-center gap-1">
-            <Terminal className="w-3.5 h-3.5 text-blue-400" />
-            <span>🔑 บัญชีผู้ใช้เริ่มต้นสำหรับทดสอบสิทธิ์</span>
-          </span>
-          <div className="bg-slate-900/60 rounded-xl p-3 border border-slate-700/40 text-[10px] sm:text-xs text-slate-400 space-y-2 font-mono">
-            <div className="flex justify-between items-center pb-1 border-b border-slate-800">
-              <span className="text-blue-300 font-bold">แอดมิน (Admin)</span>
-              <span className="text-white bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">admin / admin1234</span>
-            </div>
-            <div className="flex justify-between items-center pb-1 border-b border-slate-800">
-              <span className="text-emerald-300 font-bold">ผู้ควบคุม (Operator)</span>
-              <span className="text-white bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">operator / operator1234</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-amber-300 font-bold">ผู้เข้าชม (Viewer)</span>
-              <span className="text-white bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">viewer / viewer1234</span>
-            </div>
-          </div>
-        </div>
+
 
       </div>
 

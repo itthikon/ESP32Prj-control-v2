@@ -12,7 +12,7 @@ import SensorConfigManager from "./components/SensorConfigManager";
 import DesktopAppPanel from "./components/DesktopAppPanel";
 import LoginScreen from "./components/LoginScreen";
 import UserManagerPanel from "./components/UserManagerPanel";
-import { Info, HelpCircle, ArrowUpRight, Cpu, BookOpen, Layers, Database, RefreshCw, AlertCircle, Laptop, Users } from "lucide-react";
+import { Info, HelpCircle, ArrowUpRight, Cpu, BookOpen, Layers, Database, RefreshCw, AlertCircle, Laptop, Users, User } from "lucide-react";
 
 // Helper to generate default state for client-side fallback simulation
 const createDefaultDeviceState = (): DeviceState => {
@@ -67,6 +67,7 @@ const createDefaultDeviceState = (): DeviceState => {
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [currentUser, setCurrentUser] = useState<string>("");
+  const [currentUserRole, setCurrentUserRole] = useState<string>("viewer");
   const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
 
   const [deviceState, setDeviceState] = useState<DeviceState | null>(null);
@@ -76,7 +77,7 @@ export default function App() {
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSendingControl, setIsSendingControl] = useState(false);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "arduino" | "supabase" | "desktop">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "arduino" | "supabase" | "desktop" | "users">("dashboard");
   const [error, setError] = useState<string | null>(null);
   const [isClientFallback, setIsClientFallback] = useState(false);
 
@@ -98,17 +99,21 @@ export default function App() {
         setCurrentUser(storedUser);
         
         // Ensure user role exists in localStorage on recovery
-        if (!localStorage.getItem("esp32_user_role")) {
-          const defaultRole = storedUser.toLowerCase() === "admin" ? "admin" : 
-                             (storedUser.toLowerCase() === "operator" ? "operator" : "viewer");
-          localStorage.setItem("esp32_user_role", defaultRole);
+        let role = localStorage.getItem("esp32_user_role");
+        if (!role) {
+          role = storedUser.toLowerCase() === "admin" ? "admin" : 
+                 (storedUser.toLowerCase() === "operator" ? "operator" : "viewer");
+          localStorage.setItem("esp32_user_role", role);
         }
+        setCurrentUserRole(role);
       } else {
         // Expired (over 1 day)
         localStorage.removeItem("esp32_user");
+        localStorage.removeItem("esp32_user_role");
         localStorage.removeItem("esp32_login_time");
         setIsAuthenticated(false);
         setCurrentUser("");
+        setCurrentUserRole("viewer");
       }
     }
     setIsAuthChecking(false);
@@ -120,6 +125,7 @@ export default function App() {
     localStorage.setItem("esp32_login_time", Date.now().toString());
     setIsAuthenticated(true);
     setCurrentUser(username);
+    setCurrentUserRole(role);
   };
 
   const handleLogout = () => {
@@ -128,6 +134,7 @@ export default function App() {
     localStorage.removeItem("esp32_login_time");
     setIsAuthenticated(false);
     setCurrentUser("");
+    setCurrentUserRole("viewer");
   };
 
   // Fetch state from server API for a specific device ID
@@ -714,8 +721,17 @@ export default function App() {
                 : "border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/50"
             }`}
           >
-            <Users className="w-4 h-4" />
-            <span>จัดการผู้ใช้งาน & สิทธิ์</span>
+            {currentUserRole === "admin" || currentUser.toLowerCase() === "admin" ? (
+              <>
+                <Users className="w-4 h-4" />
+                <span>จัดการผู้ใช้งาน & สิทธิ์</span>
+              </>
+            ) : (
+              <>
+                <User className="w-4 h-4" />
+                <span>ตั้งค่าโปรไฟล์ส่วนตัว</span>
+              </>
+            )}
           </button>
         </div>
 
