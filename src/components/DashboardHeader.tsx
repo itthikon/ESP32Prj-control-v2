@@ -35,7 +35,7 @@ export default function DashboardHeader({
           </div>
           <div>
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight font-display text-slate-900">
-              ESP32 Wi-Fi Control & Dashboard
+              ESP32-Control
             </h1>
             <p className="text-xs sm:text-sm text-slate-500 flex items-center gap-1.5 mt-0.5">
               <span>ระบบตรวจสอบและควบคุมโมดูล ESP32 ผ่านเครือข่ายไร้สาย</span>
