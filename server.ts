@@ -982,7 +982,7 @@ async function startServer() {
       dev = devices[deviceId];
     }
 
-    const { temperature, humidity, soilMoisture, lightLevel, wifiRssi, uptime } = req.body;
+    const { temperature, humidity, soilMoisture, lightLevel, wifiRssi, uptime, sensorError } = req.body;
 
     let soilPct = soilMoisture;
     let lightPct = lightLevel;
@@ -1017,44 +1017,65 @@ async function startServer() {
     dev.lastSeen = new Date().toISOString();
     dev.isOnline = true;
 
-    // Store in memory history
-    dev.history.push({ ...dev.telemetry });
-    if (dev.history.length > 30) {
-      dev.history.shift();
-    }
+    // Check if there is an error reported by ESP32 or if there are no configured sensors
+    const isError = sensorError === true || sensorError === 'true';
+    const hasNoSensors = !dev.sensors || dev.sensors.length === 0;
 
-    // Write to Supabase
-    const supabase = getSupabase();
-    if (supabase && isSupabaseConfigured()) {
-      try {
-        const { error: testErr } = await supabase
-          .from("esp32_telemetry_history")
-          .select("device_id")
-          .limit(1);
-
-        const payload: any = {
-          temperature: t,
-          humidity: h,
-          soil_moisture: s,
-          light_level: l,
-          wifi_rssi: rssi,
-          uptime: upt,
-          timestamp: timestampStr,
-        };
-
-        if (!testErr) {
-          payload.device_id = deviceId;
-        }
-
-        await supabase.from("esp32_telemetry_history").insert([payload]);
-      } catch (err) {
-        console.warn("Failed to write live telemetry to Supabase", err);
+    if (isError) {
+      // Stop recording to history when sensor is disconnected/failed
+      await addLog(
+        deviceId,
+        "error",
+        `❌ [เซ็นเซอร์ชำรุด/หลุด] บอร์ด ESP32 ตรวจพบอุปกรณ์ฮาร์ดแวร์ขัดข้องหรือถอดออก! ระงับการบันทึกข้อมูลย้อนหลังลงคลาวด์ชั่วคราว`
+      );
+    } else if (hasNoSensors) {
+      // Stop recording to history when no sensors are configured
+      await addLog(
+        deviceId,
+        "warn",
+        `⚠️ [ไม่มีเซ็นเซอร์] ตรวจพบบอร์ดส่งข้อมูลเข้ามา แต่ยังไม่ได้บันทึกชื่อเซ็นเซอร์บนระบบแดชบอร์ด ระงับการบันทึกประวัติย้อนหลังชั่วคราว`
+      );
+    } else {
+      // Normal behavior: Store in memory history
+      dev.history.push({ ...dev.telemetry });
+      if (dev.history.length > 30) {
+        dev.history.shift();
       }
-    }
 
-    await addLog(deviceId, "success", `[ESP32] เชื่อมต่อสำเร็จ: อุณหภูมิ ${t}°C, ความชื้น ${h}%, RSSI: ${rssi}dBm`);
+      // Write to Supabase
+      const supabase = getSupabase();
+      if (supabase && isSupabaseConfigured()) {
+        try {
+          const { error: testErr } = await supabase
+            .from("esp32_telemetry_history")
+            .select("device_id")
+            .limit(1);
+
+          const payload: any = {
+            temperature: t,
+            humidity: h,
+            soil_moisture: s,
+            light_level: l,
+            wifi_rssi: rssi,
+            uptime: upt,
+            timestamp: timestampStr,
+          };
+
+          if (!testErr) {
+            payload.device_id = deviceId;
+          }
+
+          await supabase.from("esp32_telemetry_history").insert([payload]);
+        } catch (err) {
+          console.warn("Failed to write live telemetry to Supabase", err);
+        }
+      }
+
+      await addLog(deviceId, "success", `[ESP32] เชื่อมต่อสำเร็จ: อุณหภูมิ ${t}°C, ความชื้น ${h}%, RSSI: ${rssi}dBm`);
+    }
 
     // Fetch latest control values to return to ESP32
+    const supabase = getSupabase();
     if (supabase && isSupabaseConfigured()) {
       try {
         const { data: ctrl } = await supabase

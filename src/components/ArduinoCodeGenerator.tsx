@@ -77,21 +77,21 @@ export default function ArduinoCodeGenerator({ deviceId, sensors = [] }: Arduino
   // Build Telemetry reading statements inside loop
   let readLogic = "";
   if (hasDHT) {
-    readLogic += `    float temp = dht.readTemperature();\n    float humi = dht.readHumidity();\n    if (isnan(temp) || isnan(humi)) {\n      Serial.println("ล้มเหลวในการอ่านค่าจาก DHT! ดึงค่าเฉลี่ยจำลองแทน");\n      temp = 28.5; humi = 60.0;\n    }\n`;
+    readLogic += `    float temp = dht.readTemperature();\n    float humi = dht.readHumidity();\n    if (isnan(temp) || isnan(humi)) {\n      Serial.println("❌ [เซ็นเซอร์บกพร่อง] ล้มเหลวในการอ่านค่าจาก DHT! ตรวจพบเซ็นเซอร์หลุดหรือเสีย");\n      temp = 0.0;\n      humi = 0.0;\n      sensorError = true;\n    }\n`;
   } else if (hasDS18B20) {
-    readLogic += `    sensors.requestTemperatures();\n    float temp = sensors.getTempCByIndex(0);\n    float humi = 55.0; // ค่าคงที่จำลองกรณีไม่มีเซ็นเซอร์วัดความชื้นอากาศ\n`;
+    readLogic += `    sensors.requestTemperatures();\n    float temp = sensors.getTempCByIndex(0);\n    float humi = 55.0; // ค่าคงที่จำลองกรณีไม่มีเซ็นเซอร์วัดความชื้นอากาศ\n    if (temp == -127.0 || temp == 85.0) {\n      Serial.println("❌ [เซ็นเซอร์บกพร่อง] ล้มเหลวในการอ่านค่าจาก DS18B20! ตรวจพบเซ็นเซอร์หลุดหรือเสีย");\n      temp = 0.0;\n      sensorError = true;\n    }\n`;
   } else {
     readLogic += `    float temp = 25.0 + (random(0, 50) / 10.0); // อุณหภูมิสุ่มจำลอง\n    float humi = 55.0 + (random(0, 100) / 10.0); // ความชื้นจำลอง\n`;
   }
 
   if (hasSoil) {
-    readLogic += `    int rawSoil = analogRead(PIN_SOILMOISTURE);\n    // แปลงค่าช่วงแรงดันอนาล็อก 0-4095 เป็นเปอร์เซ็นต์ (ความแห้ง -> เปียก)\n    int soilMoisture = map(rawSoil, 3200, 1200, 0, 100);\n    soilMoisture = constrain(soilMoisture, 0, 100);\n`;
+    readLogic += `    int rawSoil = analogRead(PIN_SOILMOISTURE);\n    // แปลงค่าช่วงแรงดันอนาล็อก 0-4095 เป็นเปอร์เซ็นต์ (ความแห้ง -> เปียก)\n    int soilMoisture = map(rawSoil, 3200, 1200, 0, 100);\n    soilMoisture = constrain(soilMoisture, 0, 100);\n    if (rawSoil >= 4095 || rawSoil <= 10) {\n      Serial.println("⚠️ [เซ็นเซอร์แจ้งเตือน] ค่าอนาล็อกของเซ็นเซอร์ดินอยู่นอกเกณฑ์ปกติ (สายอาจหลุด/ลอย)");\n    }\n`;
   } else {
     readLogic += `    int soilMoisture = 45 + random(0, 15); // จำลองค่าความชื้นดิน\n`;
   }
 
   if (hasBH1750) {
-    readLogic += `    float lightLevel = lightMeter.readLightLevel(); // อ่านความเข้มแสง Lux ดิจิตอลจริง\n`;
+    readLogic += `    float lightLevel = lightMeter.readLightLevel(); // อ่านความเข้มแสง Lux ดิจิตอลจริง\n    if (lightLevel < 0 || lightLevel > 120000) {\n      Serial.println("❌ [เซ็นเซอร์บกพร่อง] ล้มเหลวในการอ่านค่าจาก BH1750! ตรวจพบเซ็นเซอร์หลุดหรือเสีย");\n      lightLevel = 0.0;\n      sensorError = true;\n    }\n`;
   } else if (hasLDR) {
     readLogic += `    int rawLdr = analogRead(PIN_LDR);\n    int lightLevel = map(rawLdr, 0, 4095, 0, 100); // แปลงเปอร์เซ็นต์ความเข้มแสง\n`;
   } else {
@@ -159,6 +159,7 @@ void loop() {
     lastTransmissionTime = currentTime;
     
     // 1. อ่านค่าจากเซ็นเซอร์ที่ตั้งค่าไว้แบบเรียลไทม์
+    bool sensorError = false;
 ${readLogic}    
     // แปลง RSSI สัญญาณ Wi-Fi ปัจจุบัน และ Uptime
     long wifiRssi = WiFi.RSSI();
@@ -172,6 +173,7 @@ ${readLogic}
     doc["lightLevel"] = lightLevel;   // ส่งค่าความสว่างแสง
     doc["wifiRssi"] = wifiRssi;
     doc["uptime"] = uptimeSeconds;
+    doc["sensorError"] = sensorError; // ส่งความบกพร่องของเซ็นเซอร์
 
     String jsonPayload;
     serializeJson(doc, jsonPayload);
