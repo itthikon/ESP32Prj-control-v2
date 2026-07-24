@@ -26,6 +26,7 @@ export default function ArduinoCodeGenerator({ deviceId, sensors = [] }: Arduino
   const hasLDR = sensors.some(s => s.type === "LDR");
   const hasHC_SR04 = sensors.some(s => s.type === "HC_SR04");
   const hasMQ135 = sensors.some(s => s.type === "MQ135");
+  const hasBattery = sensors.some(s => s.type === "Battery");
 
   // Build sensors listing comment block
   let sensorComments = "";
@@ -98,15 +99,34 @@ export default function ArduinoCodeGenerator({ deviceId, sensors = [] }: Arduino
     readLogic += `    int lightLevel = 65 + random(0, 20); // จำลองค่าความเข้มแสง\n`;
   }
 
+  if (!hasBattery) {
+    pinDefinitions += `#define PIN_BATTERY 35 // ขา ADC35 สำหรับอ่านแรงดันไฟถ่าน AA 3 ก้อนจริงจากฮาร์ดแวร์\n`;
+  }
+
+  // อ่านค่าแรงดันไฟแบตเตอรี่จริงจากสัญญาณ ADC บนบอร์ด ESP32
+  readLogic += `    // อ่านค่าแรงดันถ่าน AA 3 ก้อนจริงจากฮาร์ดแวร์ (ก้อนละ 1.2V = 3.6V Nominal, ผ่านวงจรแบ่งแรงดัน 1:2 R1=10k, R2=10k ขา ADC)
+    int rawBat = analogRead(PIN_BATTERY);
+    float batteryVoltage = (rawBat / 4095.0) * 3.3 * 2.0; // คำนวณแรงดันไฟจริงจากฮาร์ดแวร์ (0V - 4.2V)
+    int batteryLevel = map(rawBat, 2480, 3900, 0, 100); // แปลงเปอร์เซ็นต์จริงช่วงถ่าน AA 3 ก้อน (~3.0V ถึง ~4.2V)
+    batteryLevel = constrain(batteryLevel, 0, 100);\n`;
+
   const arduinoCode = `/**
  * ESP32 Wi-Fi Sensor Telemetry & Control Client
  * บอร์ดควบคุมและส่งสถานะเซ็นเซอร์แบบกำหนดเองผ่าน Wi-Fi ไปยังเว็บแดชบอร์ด
  * 
  * อุปกรณ์ที่ใช้งานจริงบนบอร์ด ${deviceId}:
- * 1. ESP32 DevKit V1
- * 2. LED แสดงสถานะระบบ -> Pin GPIO 2 (Built-in LED)
- * 3. Relay ควบคุมปั๊มน้ำ/อุปกรณ์ไฟฟ้า -> Pin GPIO 4
-${sensorComments} */
+ * 1. บอร์ดหลัก: ESP32 DevKit V1
+ * 2. บอร์ดขยายขา: ESP32 Expansion Board / Shield (ช่องต่อ G-V-S & Screw Terminal)
+ * 3. ระบบไฟเลี้ยง: ถ่าน AA 3 ก้อน (1.2V x 3 = 3.6V Nominal) / DC Jack Expansion Board
+ * 4. LED แสดงสถานะระบบ -> Pin GPIO 2 (Built-in LED)
+ * 5. Relay ควบคุมปั๊มน้ำ/อุปกรณ์ไฟฟ้า -> Pin GPIO 4
+${sensorComments} * 
+ * [คำแนะนำการต่อกับบอร์ดขยายขา ESP32 Expansion Board]:
+ * - ขา G (GND / สายสีดำหรือน้ำเงิน) -> ต่อกับขั้ว GND ของเซ็นเซอร์
+ * - ขา V (VCC / สายสีแดง)          -> ต่อกับขั้ว VCC/3.3V/5V ของเซ็นเซอร์
+ * - ขา S (Signal / สายสีเหลือง/ขาว) -> ต่อกับขาสัญญาณ GPIO ของเซ็นเซอร์ตามระบุด้านล่าง
+ * - บล็อกขันสกรู (Screw Terminal)   -> ขันสายลบ/บวกถ่าน AA และสายสัญญาณแน่นหนา
+ */
 
 #include <WiFi.h>
 #include <HTTPClient.h>
@@ -166,11 +186,13 @@ ${readLogic}
     unsigned long uptimeSeconds = millis() / 1000;
 
     // 2. จัดเตรียม JSON Payload เพื่อส่งกลับเซิร์ฟเวอร์
-    StaticJsonDocument<256> doc;
+    StaticJsonDocument<384> doc;
     doc["temperature"] = temp;
     doc["humidity"] = humi;
     doc["soilMoisture"] = soilMoisture; // ส่งค่าเปอร์เซ็นต์หรือค่าดิบเซ็นเซอร์ดิน
     doc["lightLevel"] = lightLevel;   // ส่งค่าความสว่างแสง
+    doc["batteryLevel"] = batteryLevel; // ส่งค่าเปอร์เซ็นต์แบตเตอรี่
+    doc["batteryVoltage"] = batteryVoltage; // ส่งค่าแรงดันแบตเตอรี่ V
     doc["wifiRssi"] = wifiRssi;
     doc["uptime"] = uptimeSeconds;
     doc["sensorError"] = sensorError; // ส่งความบกพร่องของเซ็นเซอร์

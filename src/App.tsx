@@ -12,31 +12,25 @@ import SensorConfigManager from "./components/SensorConfigManager";
 import DesktopAppPanel from "./components/DesktopAppPanel";
 import LoginScreen from "./components/LoginScreen";
 import UserManagerPanel from "./components/UserManagerPanel";
-import { Info, HelpCircle, ArrowUpRight, Cpu, BookOpen, Layers, Database, RefreshCw, AlertCircle, Laptop, Users, User } from "lucide-react";
+import { LineNotificationManager } from "./components/LineNotificationManager";
+import { TelegramNotificationManager } from "./components/TelegramNotificationManager";
+import { Info, HelpCircle, ArrowUpRight, Cpu, BookOpen, Layers, Database, RefreshCw, AlertCircle, Laptop, Users, User, Smartphone, SendHorizontal } from "lucide-react";
 
-// Helper to generate default state for client-side fallback simulation
+// Helper to generate default empty state for offline fallback
 const createDefaultDeviceState = (): DeviceState => {
   const now = new Date();
   const timeStr = now.toTimeString().split(" ")[0];
   
-  // Generate some mock history
-  const history: any[] = [];
-  for (let i = 20; i >= 0; i--) {
-    const time = new Date(now.getTime() - i * 5000);
-    const mockTimeStr = time.toTimeString().split(" ")[0];
-    history.push({
-      temperature: parseFloat((27.5 + Math.sin(i / 3) * 1.5).toFixed(1)),
-      humidity: parseFloat((60.0 + Math.cos(i / 3) * 3.0).toFixed(1)),
-      soilMoisture: parseFloat((45.0 + Math.sin(i / 5) * 2.0).toFixed(1)),
-      lightLevel: parseFloat((70.0 + Math.cos(i / 5) * 5.0).toFixed(1)),
-      wifiRssi: -60 - Math.floor(Math.random() * 8),
-      uptime: 120 - i * 5,
-      timestamp: mockTimeStr,
-    });
-  }
-
   return {
-    telemetry: history[history.length - 1],
+    telemetry: {
+      temperature: 0,
+      humidity: 0,
+      soilMoisture: 0,
+      lightLevel: 0,
+      wifiRssi: 0,
+      uptime: 0,
+      timestamp: "รอข้อมูลจริงจาก ESP32",
+    },
     control: {
       ledState: false,
       relayState: false,
@@ -45,13 +39,13 @@ const createDefaultDeviceState = (): DeviceState => {
     lastSeen: null,
     isOnline: false,
     simulationEnabled: false,
-    history,
+    history: [],
     logs: [
       {
         id: "init",
         timestamp: timeStr,
         type: "info",
-        message: "ระบบเชื่อมต่อเว็บหลังบ้านติดขัด - เปิดใช้งานระบบจำลองฝั่งไคลเอนต์ (Client-Side Simulator Mode) อัตโนมัติ",
+        message: "ระบบกำลังรอรับข้อมูลเซ็นเซอร์จริงจากบอร์ด ESP32...",
       },
     ],
     supabaseConnected: false,
@@ -59,7 +53,8 @@ const createDefaultDeviceState = (): DeviceState => {
     sensors: [
       { id: "s1_1", type: "DHT22", name: "เซ็นเซอร์อุณหภูมิอากาศหลัก", pin: "GPIO23", unit: "°C" },
       { id: "s1_2", type: "SoilMoisture", name: "เซ็นเซอร์ความชื้นในดิน", pin: "GPIO34", unit: "%" },
-      { id: "s1_3", type: "LDR", name: "เซ็นเซอร์ความเข้มแสงแดด", pin: "GPIO35", unit: "%" }
+      { id: "s1_3", type: "LDR", name: "เซ็นเซอร์ความเข้มแสงแดด", pin: "GPIO35", unit: "%" },
+      { id: "s1_4", type: "Battery", name: "เซ็นเซอร์วัดแบตเตอรี่บอร์ด", pin: "GPIO36", unit: "%" }
     ],
   };
 };
@@ -77,7 +72,7 @@ export default function App() {
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSendingControl, setIsSendingControl] = useState(false);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "arduino" | "supabase" | "desktop" | "users">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "arduino" | "line" | "telegram" | "supabase" | "desktop" | "users">("dashboard");
   const [error, setError] = useState<string | null>(null);
   const [isClientFallback, setIsClientFallback] = useState(false);
 
@@ -217,57 +212,7 @@ export default function App() {
     return () => clearInterval(interval);
   }, [fetchDeviceState, selectedDeviceId, isClientFallback]);
 
-  // Periodic Client-Side Simulator (runs only when in client-side fallback mode)
-  useEffect(() => {
-    if (!isClientFallback || !deviceState) return;
 
-    const interval = setInterval(() => {
-      setDeviceState((prev) => {
-        if (!prev) return prev;
-        if (!prev.simulationEnabled) return prev;
-
-        const now = new Date();
-        const timeStr = now.toTimeString().split(" ")[0];
-
-        // Simulate small fluctuation
-        const tempDelta = (Math.random() - 0.5) * 0.4;
-        const humDelta = (Math.random() - 0.5) * 1.0;
-        const soilDelta = (Math.random() - 0.5) * 0.5;
-        const lightDelta = (Math.random() - 0.5) * 2.0;
-
-        const nextTelemetry = {
-          temperature: parseFloat(Math.max(15, Math.min(45, prev.telemetry.temperature + tempDelta)).toFixed(1)),
-          humidity: parseFloat(Math.max(10, Math.min(100, prev.telemetry.humidity + humDelta)).toFixed(1)),
-          soilMoisture: parseFloat(Math.max(0, Math.min(100, prev.telemetry.soilMoisture + soilDelta)).toFixed(1)),
-          lightLevel: parseFloat(Math.max(0, Math.min(100, prev.telemetry.lightLevel + lightDelta)).toFixed(1)),
-          wifiRssi: Math.max(-90, Math.min(-30, prev.telemetry.wifiRssi + Math.round((Math.random() - 0.5) * 2))),
-          uptime: prev.telemetry.uptime + prev.control.reportingInterval,
-          timestamp: timeStr,
-        };
-
-        const newLog: LogEntry = {
-          id: Math.random().toString(36).substring(2, 9),
-          timestamp: timeStr,
-          type: "telemetry",
-          message: `[จำลองฝั่งไคลเอนต์] ค่าเซ็นเซอร์ใหม่: อุณหภูมิ ${nextTelemetry.temperature}°C | ความชื้น ${nextTelemetry.humidity}% | ดิน ${nextTelemetry.soilMoisture}% | แสง ${nextTelemetry.lightLevel}%`,
-        };
-
-        const nextHistory = [...prev.history, nextTelemetry].slice(-30);
-        const nextLogs = [newLog, ...prev.logs].slice(0, 100);
-
-        return {
-          ...prev,
-          telemetry: nextTelemetry,
-          history: nextHistory,
-          logs: nextLogs,
-          lastSeen: now.toISOString(),
-          isOnline: true,
-        };
-      });
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [isClientFallback, deviceState?.simulationEnabled, deviceState?.control.reportingInterval]);
 
   // Add a new device/location
   const handleAddDevice = async (id: string, location: string) => {
@@ -617,6 +562,7 @@ export default function App() {
         supabaseError={deviceState.supabaseError}
         isClientFallback={isClientFallback}
         onOpenSupabaseTab={() => setActiveTab("supabase")}
+        onOpenLineTab={() => setActiveTab("line")}
       />
 
       {/* Main Container */}
@@ -694,6 +640,28 @@ export default function App() {
           >
             <BookOpen className="w-4 h-4" />
             <span>ซอร์สโค้ด ESP32 (Arduino)</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("line")}
+            className={`px-4 py-2.5 text-sm font-semibold rounded-t-xl transition-all border-b-2 cursor-pointer flex items-center gap-2 ${
+              activeTab === "line"
+                ? "border-emerald-600 text-emerald-600 bg-white shadow-2xs font-bold"
+                : "border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/50"
+            }`}
+          >
+            <Smartphone className="w-4 h-4 text-emerald-600" />
+            <span>แจ้งเตือน LINE</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("telegram")}
+            className={`px-4 py-2.5 text-sm font-semibold rounded-t-xl transition-all border-b-2 cursor-pointer flex items-center gap-2 ${
+              activeTab === "telegram"
+                ? "border-sky-600 text-sky-600 bg-white shadow-2xs font-bold"
+                : "border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/50"
+            }`}
+          >
+            <SendHorizontal className="w-4 h-4 text-sky-500" />
+            <span>แจ้งเตือน Telegram</span>
           </button>
           <button
             onClick={() => setActiveTab("supabase")}
@@ -852,6 +820,22 @@ export default function App() {
             {/* Arduino Code Generator with interactive input configurations */}
             <ArduinoCodeGenerator deviceId={selectedDeviceId} sensors={deviceState?.sensors || []} />
           </div>
+        )}
+
+        {activeTab === "line" && (
+          <LineNotificationManager 
+            selectedDeviceId={selectedDeviceId}
+            devices={devicesList}
+            onRefreshDeviceState={() => fetchDeviceState(selectedDeviceId)}
+          />
+        )}
+
+        {activeTab === "telegram" && (
+          <TelegramNotificationManager 
+            selectedDeviceId={selectedDeviceId}
+            devices={devicesList}
+            onRefreshDeviceState={() => fetchDeviceState(selectedDeviceId)}
+          />
         )}
 
         {activeTab === "supabase" && (

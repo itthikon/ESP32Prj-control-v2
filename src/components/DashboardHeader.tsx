@@ -1,5 +1,5 @@
 import React from "react";
-import { Cpu, Wifi, WifiOff, RefreshCw, Trash2, Zap, Play, Pause, LogOut, User, Database, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Cpu, Wifi, WifiOff, RefreshCw, Trash2, Zap, Play, Pause, LogOut, User, Database, CheckCircle2, AlertTriangle, Smartphone } from "lucide-react";
 
 interface DashboardHeaderProps {
   isOnline: boolean;
@@ -13,6 +13,7 @@ interface DashboardHeaderProps {
   supabaseError?: string | null;
   isClientFallback?: boolean;
   onOpenSupabaseTab?: () => void;
+  onOpenLineTab?: () => void;
 }
 
 export default function DashboardHeader({
@@ -27,6 +28,7 @@ export default function DashboardHeader({
   supabaseError = null,
   isClientFallback = false,
   onOpenSupabaseTab,
+  onOpenLineTab,
 }: DashboardHeaderProps) {
   const formattedLastSeen = lastSeen
     ? new Date(lastSeen).toLocaleTimeString("th-TH")
@@ -111,11 +113,24 @@ export default function DashboardHeader({
                 </span>
               ) : isClientFallback ? (
                 <span className="text-amber-600 font-bold flex items-center gap-1">
-                  <AlertTriangle className="w-3 h-3" /> Local Sim
+                  <AlertTriangle className="w-3 h-3" /> Local Storage
                 </span>
               ) : (
                 <span className="text-blue-600 font-bold">เปิดใช้งาน</span>
               )}
+            </div>
+          </button>
+
+          {/* LINE Notification Status Badge Button */}
+          <button
+            onClick={onOpenLineTab}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold border bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100 transition-all cursor-pointer"
+            title="คลิกเพื่อตั้งค่าการแจ้งเตือนแบตเตอรี่และเซ็นเซอร์ผ่าน LINE API"
+          >
+            <Smartphone className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
+            <div className="flex items-center gap-1">
+              <span>LINE:</span>
+              <span className="text-emerald-700 font-bold">พร้อมตั้งค่า</span>
             </div>
           </button>
 

@@ -10,7 +10,7 @@ import {
   Tooltip,
   Legend
 } from "recharts";
-import { Activity, Thermometer, Droplets, Sprout, Sun } from "lucide-react";
+import { Activity, Thermometer, Droplets, Sprout, Sun, Battery } from "lucide-react";
 
 interface HistoryChartProps {
   history: Telemetry[];
@@ -22,6 +22,7 @@ export default function HistoryChart({ history }: HistoryChartProps) {
     humidity: false,
     soilMoisture: true,
     lightLevel: false,
+    batteryLevel: true,
   });
 
   const toggleMetric = (metric: keyof typeof activeMetrics) => {
@@ -96,6 +97,19 @@ export default function HistoryChart({ history }: HistoryChartProps) {
           >
             <Sun className="w-3.5 h-3.5 text-amber-500" />
             <span>แสง (%)</span>
+          </button>
+
+          {/* Battery Toggle */}
+          <button
+            onClick={() => toggleMetric("batteryLevel")}
+            className={`flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg border transition-all cursor-pointer ${
+              activeMetrics.batteryLevel
+                ? "bg-violet-50 border-violet-200 text-violet-700 font-bold"
+                : "bg-slate-50 border-slate-100 text-slate-400 hover:bg-slate-100"
+            }`}
+          >
+            <Battery className="w-3.5 h-3.5 text-violet-500" />
+            <span>แบตเตอรี่ (%)</span>
           </button>
         </div>
       </div>
@@ -179,6 +193,17 @@ export default function HistoryChart({ history }: HistoryChartProps) {
                   name="ความเข้มแสง (%)"
                   dataKey="lightLevel"
                   stroke="#f59e0b"
+                  strokeWidth={2.5}
+                  dot={{ r: 2 }}
+                  activeDot={{ r: 5 }}
+                />
+              )}
+              {activeMetrics.batteryLevel && (
+                <Line
+                  type="monotone"
+                  name="ระดับแบตเตอรี่ (%)"
+                  dataKey="batteryLevel"
+                  stroke="#8b5cf6"
                   strokeWidth={2.5}
                   dot={{ r: 2 }}
                   activeDot={{ r: 5 }}

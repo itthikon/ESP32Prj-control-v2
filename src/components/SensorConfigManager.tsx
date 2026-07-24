@@ -23,7 +23,8 @@ const SENSOR_PROFILES = [
   { type: "BH1750", label: "BH1750 (Digital Light Intensity I2C)", defaultPin: "I2C (SDA=21, SCL=22)", defaultUnit: "lux", desc: "เซ็นเซอร์แสงดิจิตอลที่มีความไวแสงสูง คุยผ่านบัส I2C" },
   { type: "LDR", label: "Analog LDR Photoresistor", defaultPin: "GPIO35", defaultUnit: "%", desc: "เซ็นเซอร์ตัวต้านทานปรับค่าตามแสงสำหรับการวัดความเข้มแสงแบบอนาล็อก" },
   { type: "HC_SR04", label: "HC-SR04 (Ultrasonic Distance Sensor)", defaultPin: "Trig=GPIO12, Echo=GPIO13", defaultUnit: "cm", desc: "เซ็นเซอร์วัดระยะทางและระดับวัตถุด้วยคลื่นอัลตราโซนิก" },
-  { type: "MQ135", label: "MQ-135 (Air Quality & Gas Sensor)", defaultPin: "GPIO32", defaultUnit: "ppm", desc: "เซ็นเซอร์วัดคุณภาพอากาศ ฝุ่นควัน และก๊าซพิษแอมโมเนีย คาร์บอน" }
+  { type: "MQ135", label: "MQ-135 (Air Quality & Gas Sensor)", defaultPin: "GPIO32", defaultUnit: "ppm", desc: "เซ็นเซอร์วัดคุณภาพอากาศ ฝุ่นควัน และก๊าซพิษแอมโมเนีย คาร์บอน" },
+  { type: "Battery", label: "Battery Level & Voltage Monitor (3x AA 1.2V / 3.6V)", defaultPin: "GPIO36", defaultUnit: "%", desc: "วงจรแบ่งแรงดันวัดระดับและเปอร์เซ็นต์ถ่าน AA 3 ก้อน (1.2V x 3 = 3.6V Nominal)" }
 ] as const;
 
 export default function SensorConfigManager({
@@ -41,6 +42,7 @@ export default function SensorConfigManager({
   const [customUnit, setCustomUnit] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeGuideSensor, setActiveGuideSensor] = useState<SensorConfig | null>(null);
+  const [viewMode, setViewMode] = useState<"master" | "single">("master");
 
   // Editing state for existing sensors
   const [editingSensorId, setEditingSensorId] = useState<string | null>(null);
@@ -347,6 +349,32 @@ export default function SensorConfigManager({
             "สามารถดาวน์โหลด Library 'MQUnifiedsensor' สำหรับแปลงค่าสัมบูรณ์เป็นความเข้มข้นหน่วยเป็นมิลลิกรัมต่อลิตรหรือ ppm เจาะจงคาร์บอน (CO2) หรือแอมโมเนีย"
           ]
         };
+      case "Battery":
+        return {
+          resistor: "ตัวต้านทาน 10k Ohm จำนวน 2 ตัวต่ออนุกรมสร้างวงจรแบ่งแรงดัน (Voltage Divider 1:2) ระหว่างขั้วบวกถ่าน AA 3 ก้อน (+), ขา GPIO36 (VP) และ GND",
+          wiring: [
+            { sensorPin: "ขั้วบวกรางถ่าน AA (+)", espPin: "ผ่าน R1 (10k) ไปยัง " + p, desc: "แรงดันถ่าน AA 3 ก้อน (3.0V - 4.2V, แรงดันปกติ 3.6V) ถูกลดทอนแรงดันลงครึ่งหนึ่งเพื่อความปลอดภัยของ ESP32 ADC" },
+            { sensorPin: "จุดกลาง R1 และ R2", espPin: p + " (ADC1_CH0 / VP)", desc: "อ่านค่าอนาล็อกด้วยคำสั่ง analogRead" },
+            { sensorPin: "ขั้วลบรางถ่าน AA (-)", espPin: "GND (ผ่าน R2 10k)", desc: "ต่อลงกราวด์ร่วมของบอร์ด ESP32" }
+          ],
+          schematic: `
+   [ ขั้วบวกรางถ่าน AA 3 ก้อน (1.2V x 3 = 3.6V) ]
+                        |
+                    [R1: 10k]
+                        |
+                        +-----> ต่อเข้าขา ${p} (ADC) บนบอร์ด ESP32
+                        |
+                    [R2: 10k]
+                        |
+   [ ขั้วลบรางถ่าน AA (-) & GND บอร์ด ESP32 ]
+          `,
+          arduinoSteps: [
+            `อ่านค่าอนาล็อกดิบจากวงจรแบ่งแรงดัน: \`int rawBat = analogRead(${p});\``,
+            "คำนวณแรงดันไฟจริงจากถ่าน 3x AA 1.2V: `float vBat = (rawBat / 4095.0) * 3.3 * 2.0;`",
+            "แปลงเป็นเปอร์เซ็นต์ความจุ 0-100% (เทียบช่วงแรงดัน 3.0V ถึง 4.2V): `int percent = map(rawBat, 2480, 3900, 0, 100);`",
+            "จำกัดกรอบเปอร์เซ็นต์ไม่ให้เกินช่วง 0-100%: `percent = constrain(percent, 0, 100);`"
+          ]
+        };
       default:
         return {
           resistor: "ไม่ต้องเชื่อมต่อตัวต้านทานภายนอกเพิ่มเติม",
@@ -395,10 +423,10 @@ export default function SensorConfigManager({
           </div>
           <div>
             <h2 className="text-base sm:text-lg font-bold font-display text-slate-800">
-              จัดการรายการเซ็นเซอร์ของบอร์ด
+              จัดการรายการเซ็นเซอร์ของบอร์ด & บอร์ดขยายขา (Expansion Board)
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
-              กำหนดประเภทพิน GPIO สำหรับอุปกรณ์แต่ละตัว และดูแนวทางการเชื่อมต่อ
+              กำหนดพิน GPIO สำหรับอุปกรณ์ แต่ละตัวและวิธีเสียบกับบอร์ดขยายขา (ESP32 Expansion Shield / GVS / Screw Terminal)
             </p>
           </div>
         </div>
@@ -411,6 +439,35 @@ export default function SensorConfigManager({
             <span>เพิ่มเซ็นเซอร์ชิ้นใหม่</span>
           </button>
         )}
+      </div>
+
+      {/* Expansion Board Info Callout */}
+      <div className="mx-5 mt-4 sm:mx-6 bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-2xl p-4 shadow-sm border border-slate-800">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="p-2.5 bg-indigo-500/20 text-indigo-400 rounded-xl shrink-0 mt-0.5 border border-indigo-500/30">
+              <Cpu className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-indigo-200 uppercase tracking-wide">ESP32 Expansion Board / Shield</span>
+                <span className="text-[10px] bg-indigo-500/30 text-indigo-300 font-bold px-2 py-0.5 rounded-full border border-indigo-400/20">
+                  บอร์ดขยายขาเซ็นเซอร์
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                <b>แนะนำการใช้งานร่วมกับบอร์ดขยายขา (Expansion Shield / Terminal Board):</b> รองรับหัวเสียบ <b>G-V-S</b> (GND - VCC - Signal) และช่องขันสกรู <b>Screw Terminals</b> ช่วยให้ต่อเซ็นเซอร์ทุกตัวได้อย่างเป็นระเบียบ ไม่ต้องใช้บอร์ดทดลอง (Breadboard) สายไม่หลวม และไฟเลี้ยงสม่ำเสมอ
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 text-[11px] font-mono bg-slate-800/80 border border-slate-700/60 rounded-xl px-3 py-2 shrink-0">
+            <div className="space-y-0.5">
+              <div><span className="text-rose-400 font-bold">G</span> = GND (กราวด์)</div>
+              <div><span className="text-amber-400 font-bold">V</span> = VCC (3.3V/5V)</div>
+              <div><span className="text-emerald-400 font-bold">S</span> = Signal (ขาสัญญาณ GPIO)</div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {isViewer && (
@@ -448,7 +505,12 @@ export default function SensorConfigManager({
                 return (
                   <div
                     key={sensor.id}
-                    onClick={() => !isEditing && setActiveGuideSensor(sensor)}
+                    onClick={() => {
+                      if (!isEditing) {
+                        setActiveGuideSensor(sensor);
+                        setViewMode("single");
+                      }
+                    }}
                     className={`group relative border rounded-xl p-3.5 transition-all cursor-pointer ${
                       isGuideActive 
                         ? "bg-blue-50/50 border-blue-200/80 shadow-2xs" 
@@ -672,9 +734,178 @@ export default function SensorConfigManager({
           )}
         </div>
 
-        {/* Right Side: Step-by-Step Connection Instructions */}
+        {/* Right Side: Step-by-Step Connection Instructions & Master Schematic */}
         <div className="lg:col-span-7 bg-slate-50 border border-slate-100 rounded-2xl p-4 sm:p-5 flex flex-col justify-between">
-          {activeGuideSensor ? (
+          {/* Top Mode Selector Tabs */}
+          <div className="flex items-center justify-between border-b border-slate-200/80 pb-3 mb-4 gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 bg-slate-200/70 p-1 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setViewMode("master")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  viewMode === "master"
+                    ? "bg-white text-indigo-700 shadow-xs"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <Cpu className="w-3.5 h-3.5 text-indigo-600" />
+                <span>📌 ผังวงจรรวมทั้งระบบ (Master Diagram)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setViewMode("single");
+                  if (!activeGuideSensor && sensors.length > 0) {
+                    setActiveGuideSensor(sensors[0]);
+                  }
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  viewMode === "single"
+                    ? "bg-white text-blue-700 shadow-xs"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <BookOpen className="w-3.5 h-3.5 text-blue-600" />
+                <span>🔌 คู่มือต่อแยกตามอุปกรณ์</span>
+              </button>
+            </div>
+            <span className="text-[10px] bg-indigo-100 text-indigo-800 font-bold px-2.5 py-1 rounded-full border border-indigo-200/60">
+              EXPANSION SHIELD (G-V-S) + 3x AA BATTERY
+            </span>
+          </div>
+
+          {viewMode === "master" ? (
+            <div className="space-y-4">
+              {/* Overview Callout */}
+              <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-4 rounded-xl shadow-xs border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Wrench className="w-4 h-4 text-emerald-400" />
+                    <span className="text-xs font-bold text-slate-100">ผังวงจรการเชื่อมต่อเซ็นเซอร์รวมทั้งระบบ (Master System Schematic)</span>
+                  </div>
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-md font-mono border border-emerald-500/30">
+                    STATUS: READY
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  ไดอะแกรมรวมสำหรับบอร์ด <b>ESP32 DevKit V1</b> เสียบซ้อนบน <b>บอร์ดขยายขา (Expansion Board / Shield)</b> โดยใช้แหล่งจ่ายไฟถ่าน <b>AA 3 ก้อน (1.2V x 3 = 3.6V Nominal)</b> ขันสกรูเข้าช่อง Terminal Block และต่อเซ็นเซอร์ผ่านพอร์ต <b>G-V-S</b> (GND-VCC-Signal)
+                </p>
+              </div>
+
+              {/* Master ASCII Diagram Box */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                  <span>แผนผังวงจรไฟฟ้าและการเสียบพิน (System Circuit Blueprint)</span>
+                  <span className="text-[10px] text-slate-400 font-normal">ESP32 Pinout & G-V-S Headers</span>
+                </div>
+                <pre className="bg-slate-900 text-emerald-400 font-mono text-[9px] sm:text-[10px] p-3.5 rounded-xl overflow-x-auto leading-tight shadow-inner border border-slate-800">
+                  <code>{`========================================================================================
+   ไดอะแกรมวงจรรวม: ESP32 + บอร์ดขยายขา (Expansion Shield) + ถ่าน AA 3 ก้อน (1.2V x 3 = 3.6V)
+========================================================================================
+
+                 [ รางถ่าน AA 3 ก้อน (1.2V x 3 = 3.6V Nominal) ]
+                   (+) สายบวกสีแดง              (-) สายลบสีดำ
+                    |                             |
+                    +----+                        |
+                    |    |                        |
+                    |  [R1: 10k]                  |
+                    |    |                        |
+                    |    +---> ขาสัญญาณ [GPIO36]   |  (วัดระดับแรงดันแบตเตอรี่)
+                    |    |    (VP / ADC1_CH0)    |
+                    |  [R2: 10k]                  |
+                    |    |                        |
+                    v    v                        v
+  +------------------------------------------------------------------------------------+
+  |                     ESP32 EXPANSION BOARD / SHIELD (บอร์ดขยายขา)                    |
+  |  [ Power Screw Terminal: VCC (+) / GND (-) ] <--- ไฟเลี้ยงหลักจากถ่าน AA 3 ก้อน     |
+  +------------------------------------------------------------------------------------+
+  |                                                                                    |
+  |   [ บอร์ดหลัก ESP32 DevKit V1 (30 Pins) เสียบซ้อนอยู่ด้านบนบอร์ดขยายขา ]               |
+  |                                                                                    |
+  |   [พอร์ตเสียบสายเซ็นเซอร์ขยายขา G-V-S บนบอร์ด]                                      |
+  |   ------------------------------------------------------------------------------   |
+  |   - ขา GPIO36 (VP)  <== [S] [V] [G] ==> ต่อวงจรแบ่งแรงดันแบตเตอรี่ (3x AA 1.2V)       |
+  |   - ขา GPIO34 (ADC) <== [S] [V] [G] ==> เซ็นเซอร์ความชื้นในดิน (Capacitive Soil)    |
+  |   - ขา GPIO35 (ADC) <== [S] [V] [G] ==> เซ็นเซอร์วัดความเข้มแสง LDR (+ 10k Resistor)  |
+  |   - ขา GPIO23 (IO)  <== [S] [V] [G] ==> เซ็นเซอร์วัดอุณหภูมิ/ความชื้น DHT22 (+ 10k)    |
+  |   - ขา GPIO4  (IO)  <== [S] [V] [G] ==> โมดูลรีเลย์สวิตช์ปั๊มน้ำ (Relay 1-Channel)    |
+  |   - ขา GPIO2  (IO)  <== Built-in LED แสดงสถานะการเชื่อมต่อ Wi-Fi                  |
+  |                                                                                    |
+  +------------------------------------------------------------------------------------+
+  * สัญลักษณ์พินบอร์ดขยายขา: G = GND (สายสีดำ), V = VCC 3.3V/5V (สายสีแดง), S = Signal (สายสัญญาณ)`}</code>
+                </pre>
+              </div>
+
+              {/* Master Wiring Table */}
+              <div className="space-y-2 pt-1">
+                <h3 className="text-xs font-bold text-slate-700 flex items-center justify-between">
+                  <span>ตารางพินพอร์ตขยายขา G-V-S รวมทั้งระบบ (Master Wiring Table)</span>
+                  <span className="text-[10px] text-indigo-600 font-mono">จำนวน {sensors.length + 2} อุปกรณ์</span>
+                </h3>
+                <div className="overflow-x-auto border border-slate-200/80 rounded-xl bg-white shadow-2xs">
+                  <table className="w-full text-[11px] text-left text-slate-600">
+                    <thead className="bg-slate-100/80 text-[10px] font-bold text-slate-500 uppercase border-b border-slate-200">
+                      <tr>
+                        <th className="px-3 py-2">อุปกรณ์ / เซ็นเซอร์</th>
+                        <th className="px-3 py-2 text-blue-700">ขา GPIO</th>
+                        <th className="px-3 py-2 text-amber-700">พิน S (Signal)</th>
+                        <th className="px-3 py-2 text-rose-700">พิน V (VCC)</th>
+                        <th className="px-3 py-2 text-slate-700">พิน G (GND)</th>
+                        <th className="px-3 py-2">คำแนะนำเพิ่มเติม</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-mono text-[10.5px]">
+                      {/* Fixed Battery Monitor Row */}
+                      <tr className="hover:bg-amber-50/30 bg-amber-50/10">
+                        <td className="px-3 py-2 font-bold text-amber-900 font-sans flex items-center gap-1.5">
+                          <span>🔋 แบตเตอรี่ (3x AA 1.2V)</span>
+                        </td>
+                        <td className="px-3 py-2 text-blue-700 font-bold">GPIO 36 (VP)</td>
+                        <td className="px-3 py-2 text-amber-800 font-bold">พิน S (GPIO 36)</td>
+                        <td className="px-3 py-2 text-rose-700">ผ่าน R1 10k (ถ่าน +)</td>
+                        <td className="px-3 py-2 text-slate-700">ผ่าน R2 10k (ถ่าน -)</td>
+                        <td className="px-3 py-2 text-slate-500 font-sans">วงจรแบ่งแรงดัน 1:2 (3.0V–4.2V)</td>
+                      </tr>
+
+                      {/* Fixed Relay Row */}
+                      <tr className="hover:bg-blue-50/30 bg-blue-50/10">
+                        <td className="px-3 py-2 font-bold text-blue-900 font-sans flex items-center gap-1.5">
+                          <span>💧 รีเลย์ปั๊มน้ำ (Relay)</span>
+                        </td>
+                        <td className="px-3 py-2 text-blue-700 font-bold">GPIO 4</td>
+                        <td className="px-3 py-2 text-amber-800 font-bold">พิน S (GPIO 4)</td>
+                        <td className="px-3 py-2 text-rose-700">พิน V (5V/3.3V)</td>
+                        <td className="px-3 py-2 text-slate-700">พิน G (GND)</td>
+                        <td className="px-3 py-2 text-slate-500 font-sans">สวิตช์เปิด-ปิดปั๊มน้ำอัตโนมัติ</td>
+                      </tr>
+
+                      {/* Active Sensors Dynamic Rows */}
+                      {sensors.map((sensor) => (
+                        <tr key={sensor.id} className="hover:bg-slate-50/80">
+                          <td className="px-3 py-2 font-bold text-slate-800 font-sans">
+                            {sensor.name} ({sensor.type})
+                          </td>
+                          <td className="px-3 py-2 text-blue-700 font-bold">{sensor.pin}</td>
+                          <td className="px-3 py-2 text-amber-800 font-bold">พิน S ({sensor.pin})</td>
+                          <td className="px-3 py-2 text-rose-700">พิน V (3.3V/5V)</td>
+                          <td className="px-3 py-2 text-slate-700">พิน G (GND)</td>
+                          <td className="px-3 py-2 text-slate-500 font-sans">
+                            {sensor.type === "DHT22" || sensor.type === "DHT11"
+                              ? "มีตัวต้านทาน Pull-up 10k"
+                              : sensor.type === "LDR"
+                              ? "มีตัวต้านทาน Divider 10k"
+                              : sensor.type === "BH1750"
+                              ? "บัส I2C (SDA=21, SCL=22)"
+                              : "ต่อพอร์ต G-V-S ตรงได้เลย"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          ) : activeGuideSensor ? (
             (() => {
               const guide = getConnectionGuide(activeGuideSensor);
               return (
@@ -695,15 +926,15 @@ export default function SensorConfigManager({
                   <div className="space-y-2">
                     <h3 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                       <Wrench className="w-3.5 h-3.5 text-slate-500" />
-                      <span>1. ตารางการโยงขาสัญญาณเซ็นเซอร์ (Pinout wiring list)</span>
+                      <span>1. ตารางการโยงขาสัญญาณพอร์ต G-V-S บนบอร์ดขยายขา (Pinout Wiring List)</span>
                     </h3>
                     <div className="overflow-x-auto border border-slate-200/60 rounded-xl bg-white">
                       <table className="w-full text-[11px] text-left text-slate-600">
                         <thead className="bg-slate-50 text-[10px] font-bold text-slate-400 uppercase border-b border-slate-200/60">
                           <tr>
                             <th className="px-3 py-2">ฝั่งเซ็นเซอร์ (Sensor Pin)</th>
-                            <th className="px-3 py-2 text-blue-600">ฝั่งบอร์ด ESP32 (Microcontroller Pin)</th>
-                            <th className="px-3 py-2">คำอธิบายหน้าทีการทำงาน</th>
+                            <th className="px-3 py-2 text-blue-600">ฝั่งบอร์ดขยายขา ESP32 Shield</th>
+                            <th className="px-3 py-2">คำอธิบายหน้าที่การทำงาน</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -735,7 +966,7 @@ export default function SensorConfigManager({
                     <h3 className="text-xs font-bold text-slate-700">
                       2. ไดอะแกรมวงจรการเชื่อมต่อ (Circuit Visual Blueprint)
                     </h3>
-                    <pre className="bg-slate-900 text-emerald-400 font-mono text-[9px] sm:text-[10px] p-3 rounded-xl overflow-x-auto leading-tight shadow-inner">
+                    <pre className="bg-slate-900 text-emerald-400 font-mono text-[9px] sm:text-[10px] p-3 rounded-xl overflow-x-auto leading-tight shadow-inner border border-slate-800">
                       <code>{guide.schematic}</code>
                     </pre>
                   </div>
@@ -759,9 +990,9 @@ export default function SensorConfigManager({
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center py-12 text-center text-slate-400">
               <BookOpen className="w-12 h-12 text-slate-200 mb-3" />
-              <h3 className="text-sm font-bold text-slate-600">ยินดีต้อนรับเข้าสู่ระบบคู่มือแนะนำการต่อวงจร</h3>
+              <h3 className="text-sm font-bold text-slate-600">คู่มือการเชื่อมต่อรายอุปกรณ์</h3>
               <p className="text-xs text-slate-400 mt-1 max-w-sm">
-                คลิกเลือกเซ็นเซอร์รายการซ้ายมือที่คุณต้องการดูขั้นตอนแนะนำ หรือคลิก "เพิ่มเซ็นเซอร์ชิ้นใหม่" เพื่อต่อขยายบอร์ดสมาร์ท
+                คลิกเลือกรายการเซ็นเซอร์จากด้านซ้ายมือเพื่อดูคู่มือ pinout และวิธีต่อเฉพาะชิ้น หรือสลับไปดูผังวงจรรวมทั้งระบบ
               </p>
             </div>
           )}

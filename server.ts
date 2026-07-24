@@ -1,7 +1,204 @@
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { Telemetry, ControlState, LogEntry, DeviceState, SensorConfig } from "./src/types";
+import { Telemetry, ControlState, LogEntry, DeviceState, SensorConfig, LineConfig, TelegramConfig } from "./src/types";
+
+// Global LINE Messaging API Configuration
+let globalLineConfig: LineConfig = {
+  enabled: false,
+  channelAccessToken: "",
+  userId: "",
+  notifyBatteryLow: true,
+  batteryThreshold: 20,
+  notifySensorsAlert: true,
+  tempMaxThreshold: 38,
+  soilMinThreshold: 25,
+  selectedSensors: ["temperature", "humidity", "soilMoisture", "lightLevel", "batteryLevel", "batteryVoltage", "relayState"],
+  autoReportInterval: 0,
+  lastReportTime: 0,
+};
+
+// Global Telegram Bot Configuration
+let globalTelegramConfig: TelegramConfig = {
+  enabled: false,
+  botToken: "",
+  chatId: "",
+  notifyBatteryLow: true,
+  batteryThreshold: 20,
+  notifySensorsAlert: true,
+  tempMaxThreshold: 38,
+  soilMinThreshold: 25,
+  selectedSensors: ["temperature", "humidity", "soilMoisture", "lightLevel", "batteryLevel", "batteryVoltage", "relayState"],
+  autoReportInterval: 0,
+  lastReportTime: 0,
+};
+
+// Map to track cooldown timers for alerts to prevent spamming LINE/Telegram
+let alertCooldowns: { [key: string]: number } = {};
+
+async function sendTelegramNotification(message: string, overrideConfig?: TelegramConfig) {
+  const cfg = overrideConfig || globalTelegramConfig;
+  const botToken = (cfg.botToken || "").trim();
+  const chatId = (cfg.chatId || "").trim();
+
+  if (!botToken) {
+    return { success: false, error: "ยังไม่ได้ระบุ Telegram Bot Token (เช่น 123456789:ABCdef...)" };
+  }
+
+  if (!chatId) {
+    return { success: false, error: "ยังไม่ได้ระบุ Telegram Chat ID (เช่น -100123456789 หรือ ID บัญชีของคุณ)" };
+  }
+
+  try {
+    const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: message,
+        parse_mode: "HTML",
+      }),
+    });
+
+    const data = (await res.json()) as any;
+    if (res.ok && data.ok) {
+      return { success: true };
+    } else {
+      return { success: false, error: data.description || "ส่งข้อความ Telegram ไม่สำเร็จ โปรดตรวจสอบ Bot Token และ Chat ID" };
+    }
+  } catch (err: any) {
+    return { success: false, error: err.message || "ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ Telegram Bot API ได้" };
+  }
+}
+
+function formatSensorTelegramReport(device: any, sensorsToInclude: string[], customTitle?: string): string {
+  const t = device.telemetry;
+  const timeStr = new Date().toLocaleTimeString("th-TH");
+  
+  let lines: string[] = [];
+  lines.push(`<b>✈️ [Telegram IoT Alert] ${customTitle || "รายงานสถานะอุปกรณ์"}</b>`);
+  lines.push(`📍 <b>สถานที่:</b> ${device.location}`);
+  lines.push(`⏰ <b>เวลาบันทึก:</b> ${t.timestamp || timeStr}`);
+  lines.push(`--------------------------------`);
+
+  if (sensorsToInclude.includes("temperature") && t.temperature !== undefined) {
+    lines.push(`🌡️ <b>อุณหภูมิอากาศ:</b> ${t.temperature} °C`);
+  }
+  if (sensorsToInclude.includes("humidity") && t.humidity !== undefined) {
+    lines.push(`💧 <b>ความชื้นอากาศ:</b> ${t.humidity} %`);
+  }
+  if (sensorsToInclude.includes("soilMoisture") && t.soilMoisture !== undefined) {
+    lines.push(`🌱 <b>ความชื้นในดิน:</b> ${t.soilMoisture} %`);
+  }
+  if (sensorsToInclude.includes("lightLevel") && t.lightLevel !== undefined) {
+    lines.push(`☀️ <b>ความเข้มแสงแดด:</b> ${t.lightLevel} %`);
+  }
+  if (sensorsToInclude.includes("batteryLevel") && t.batteryLevel !== undefined) {
+    const icon = t.batteryLevel < 20 ? "⚠️🪫" : "🔋";
+    lines.push(`${icon} <b>ระดับแบตเตอรี่ (ถ่าน AA 3 ก้อน):</b> ${t.batteryLevel}%`);
+  }
+  if (sensorsToInclude.includes("batteryVoltage") && t.batteryVoltage !== undefined) {
+    lines.push(`⚡ <b>แรงดันไฟถ่าน AA:</b> ${t.batteryVoltage} V`);
+  }
+  if (sensorsToInclude.includes("relayState")) {
+    const relayText = device.control.relayState ? "🟢 เปิดทำงาน (ON)" : "🔴 ปิดทำงาน (OFF)";
+    lines.push(`🚰 <b>สถานะปั๊มน้ำ (Relay):</b> ${relayText}`);
+  }
+  if (sensorsToInclude.includes("wifiRssi") && t.wifiRssi !== undefined) {
+    lines.push(`📶 <b>สัญญาณ Wi-Fi:</b> ${t.wifiRssi} dBm`);
+  }
+
+  return lines.join("\n");
+}
+
+async function sendLineNotification(message: string, overrideConfig?: LineConfig) {
+  const cfg = overrideConfig || globalLineConfig;
+  const token = (cfg.channelAccessToken || (cfg as any).token || "").trim();
+  const userId = (cfg.userId || "").trim();
+
+  if (!token) {
+    return { success: false, error: "ยังไม่ได้ป้อน LINE Messaging API Channel Access Token" };
+  }
+
+  if (!userId) {
+    return { success: false, error: "LINE Messaging API จำเป็นต้องระบุ Target User ID หรือ Group ID" };
+  }
+
+  try {
+    // LINE Messaging API (Push message)
+    const res = await fetch("https://api.line.me/v2/bot/message/push", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        to: userId,
+        messages: [
+          {
+            type: "text",
+            text: message,
+          },
+        ],
+      }),
+    });
+
+    if (res.ok) {
+      return { success: true };
+    } else {
+      const data = (await res.json()) as any;
+      return { success: false, error: data.message || JSON.stringify(data) };
+    }
+  } catch (err: any) {
+    return { success: false, error: err.message || "ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ LINE Developers API ได้" };
+  }
+}
+
+function formatSensorLineReport(device: any, sensorsToInclude: string[], customTitle?: string): string {
+  const t = device.telemetry;
+  const timeStr = new Date().toLocaleTimeString("th-TH");
+  
+  let lines: string[] = [];
+  lines.push(`\n📱 [LINE IoT Status] ${customTitle || "รายงานสถานะอุปกรณ์"}`);
+  lines.push(`📍 สถานที่: ${device.location}`);
+  lines.push(`⏰ เวลาบันทึก: ${t.timestamp || timeStr}`);
+  lines.push(`--------------------------------`);
+
+  if (sensorsToInclude.includes("temperature") && t.temperature !== undefined) {
+    lines.push(`🌡️ อุณหภูมิอากาศ: ${t.temperature} °C`);
+  }
+  if (sensorsToInclude.includes("humidity") && t.humidity !== undefined) {
+    lines.push(`💧 ความชื้นอากาศ: ${t.humidity} %`);
+  }
+  if (sensorsToInclude.includes("soilMoisture") && t.soilMoisture !== undefined) {
+    lines.push(`🌱 ความชื้นในดิน: ${t.soilMoisture} %`);
+  }
+  if (sensorsToInclude.includes("lightLevel") && t.lightLevel !== undefined) {
+    lines.push(`☀️ ความเข้มแสงแดด: ${t.lightLevel} %`);
+  }
+  if (sensorsToInclude.includes("batteryLevel") && t.batteryLevel !== undefined) {
+    const icon = t.batteryLevel < 20 ? "⚠️🪫" : "🔋";
+    lines.push(`${icon} แบตเตอรี่ (3x AA 1.2V): ${t.batteryLevel}%`);
+  }
+  if (sensorsToInclude.includes("batteryVoltage") && t.batteryVoltage !== undefined) {
+    lines.push(`⚡ แรงดันถ่าน AA: ${t.batteryVoltage} V`);
+  }
+  if (sensorsToInclude.includes("relayState")) {
+    const relayText = device.control.relayState ? "🟢 เปิดทำงาน (ON)" : "🔴 ปิดทำงาน (OFF)";
+    lines.push(`🚰 สถานะปั๊มน้ำ (Relay): ${relayText}`);
+  }
+  if (sensorsToInclude.includes("wifiRssi") && t.wifiRssi !== undefined) {
+    lines.push(`📶 ความแรง Wi-Fi: ${t.wifiRssi} dBm`);
+  }
+
+  lines.push(`--------------------------------`);
+  lines.push(`สถานะบอร์ด: ${device.isOnline ? "🟢 ออนไลน์ (Online)" : "🔴 ออฟไลน์ (Offline)"}`);
+
+  return lines.join("\n");
+}
 import { getSupabase, isSupabaseConfigured, setDynamicSupabaseConfig, getDynamicSupabaseConfig } from "./src/supabase";
 
 async function startServer() {
@@ -52,7 +249,8 @@ async function startServer() {
       sensors: [
         { id: "s1_1", type: "DHT22", name: "เซ็นเซอร์อุณหภูมิอากาศหลัก", pin: "GPIO23", unit: "°C" },
         { id: "s1_2", type: "SoilMoisture", name: "เซ็นเซอร์ความชื้นในดิน", pin: "GPIO34", unit: "%" },
-        { id: "s1_3", type: "LDR", name: "เซ็นเซอร์ความเข้มแสงแดด", pin: "GPIO35", unit: "%" }
+        { id: "s1_3", type: "LDR", name: "เซ็นเซอร์ความเข้มแสงแดด", pin: "GPIO35", unit: "%" },
+        { id: "s1_4", type: "Battery", name: "เซ็นเซอร์วัดแบตเตอรี่บอร์ด", pin: "GPIO36", unit: "%" }
       ],
       syncPending: false,
       lastLocalUpdate: Date.now(),
@@ -311,8 +509,76 @@ async function startServer() {
     }
   }
 
-  // Initial Sync for all devices (run in background)
+  // Load and save settings to Supabase Online Database
+  async function loadSettingsFromSupabase() {
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    try {
+      // 1. LINE Config
+      const { data: lineData } = await supabase.from("esp32_settings").select("*").eq("key", "line_config").single();
+      if (lineData && lineData.value) {
+        globalLineConfig = typeof lineData.value === "string" ? JSON.parse(lineData.value) : lineData.value;
+        console.log("Loaded LINE notification config from Supabase Cloud DB");
+      }
+
+      // 2. Telegram Config
+      const { data: tgData } = await supabase.from("esp32_settings").select("*").eq("key", "telegram_config").single();
+      if (tgData && tgData.value) {
+        globalTelegramConfig = typeof tgData.value === "string" ? JSON.parse(tgData.value) : tgData.value;
+        console.log("Loaded Telegram notification config from Supabase Cloud DB");
+      }
+
+      // 3. User Accounts
+      const { data: userData } = await supabase.from("app_users").select("*");
+      if (userData && userData.length > 0) {
+        users = userData.map((u: any) => ({
+          username: u.username,
+          password: u.password,
+          role: u.role,
+          lastActive: u.last_active || u.lastActive || "ยังไม่เคยเข้าสู่ระบบ",
+        }));
+        console.log("Loaded user accounts from Supabase Cloud DB:", users.length, "users");
+      }
+    } catch (err: any) {
+      console.warn("Could not load global settings from Supabase online database:", err.message || err);
+    }
+  }
+
+  async function saveSettingToSupabase(key: string, value: any) {
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    try {
+      const valString = typeof value === "object" ? JSON.stringify(value) : value;
+      await supabase.from("esp32_settings").upsert({ key, value: valString, updated_at: new Date().toISOString() });
+      console.log(`Saved setting '${key}' to Supabase Cloud DB successfully`);
+    } catch (err: any) {
+      console.warn(`Failed to save setting '${key}' to Supabase:`, err.message || err);
+    }
+  }
+
+  async function saveUsersToSupabase() {
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    try {
+      const rows = users.map((u) => ({
+        username: u.username,
+        password: u.password,
+        role: u.role,
+        last_active: u.lastActive,
+      }));
+      await supabase.from("app_users").upsert(rows);
+      console.log("Saved user accounts to Supabase Cloud DB successfully");
+    } catch (err: any) {
+      console.warn("Failed to save users to Supabase:", err.message || err);
+    }
+  }
+
+  // Initial Sync for all devices and global settings from Supabase Online Database
   if (isSupabaseConfigured()) {
+    loadSettingsFromSupabase().catch((err) => console.warn("Load settings error:", err));
     for (const deviceId of Object.keys(devices)) {
       syncControlsFromSupabase(deviceId)
         .then(() => syncHistoryAndLogsFromSupabase(deviceId))
@@ -419,6 +685,7 @@ async function startServer() {
       lastActive: "ยังไม่เคยเข้าสู่ระบบ"
     };
     users.push(newUser);
+    saveUsersToSupabase().catch(err => console.warn("Failed to persist user to Supabase:", err));
     res.json({ success: true, user: newUser });
   });
 
@@ -431,6 +698,7 @@ async function startServer() {
     }
     if (password) user.password = password.trim();
     if (role) user.role = role;
+    saveUsersToSupabase().catch(err => console.warn("Failed to persist user update to Supabase:", err));
     res.json({ success: true, user });
   });
 
@@ -445,6 +713,7 @@ async function startServer() {
     if (users.length === initialLength) {
       return res.status(404).json({ error: "ไม่พบผู้ใช้งานที่ต้องการลบ" });
     }
+    saveUsersToSupabase().catch(err => console.warn("Failed to persist user deletion to Supabase:", err));
     res.json({ success: true });
   });
 
@@ -817,6 +1086,8 @@ async function startServer() {
             humidity: Number(row.humidity),
             soilMoisture: Number(row.soil_moisture),
             lightLevel: Number(row.light_level),
+            batteryLevel: row.battery_level !== undefined && row.battery_level !== null ? Number(row.battery_level) : dev.telemetry.batteryLevel,
+            batteryVoltage: row.battery_voltage !== undefined && row.battery_voltage !== null ? Number(row.battery_voltage) : dev.telemetry.batteryVoltage,
             wifiRssi: Number(row.wifi_rssi),
             uptime: Number(row.uptime),
             timestamp: row.timestamp,
@@ -828,6 +1099,8 @@ async function startServer() {
             humidity: Number(latest.humidity),
             soilMoisture: Number(latest.soil_moisture),
             lightLevel: Number(latest.light_level),
+            batteryLevel: latest.battery_level !== undefined && latest.battery_level !== null ? Number(latest.battery_level) : dev.telemetry.batteryLevel,
+            batteryVoltage: latest.battery_voltage !== undefined && latest.battery_voltage !== null ? Number(latest.battery_voltage) : dev.telemetry.batteryVoltage,
             wifiRssi: Number(latest.wifi_rssi),
             uptime: Number(latest.uptime),
             timestamp: latest.timestamp,
@@ -982,7 +1255,7 @@ async function startServer() {
       dev = devices[deviceId];
     }
 
-    const { temperature, humidity, soilMoisture, lightLevel, wifiRssi, uptime, sensorError } = req.body;
+    const { temperature, humidity, soilMoisture, lightLevel, batteryLevel, batteryVoltage, wifiRssi, uptime, sensorError } = req.body;
 
     let soilPct = soilMoisture;
     let lightPct = lightLevel;
@@ -999,6 +1272,8 @@ async function startServer() {
     const h = humidity !== undefined ? Number(humidity) : dev.telemetry.humidity;
     const s = soilPct !== undefined ? Number(soilPct) : dev.telemetry.soilMoisture;
     const l = lightPct !== undefined ? Number(lightPct) : dev.telemetry.lightLevel;
+    const bat = batteryLevel !== undefined ? Number(batteryLevel) : (dev.telemetry.batteryLevel ?? 88);
+    const batV = batteryVoltage !== undefined ? Number(batteryVoltage) : (dev.telemetry.batteryVoltage ?? 4.02);
     const rssi = wifiRssi !== undefined ? Number(wifiRssi) : dev.telemetry.wifiRssi;
     const upt = uptime !== undefined ? Number(uptime) : dev.telemetry.uptime;
 
@@ -1008,6 +1283,8 @@ async function startServer() {
       humidity: h,
       soilMoisture: s,
       lightLevel: l,
+      batteryLevel: bat,
+      batteryVoltage: batV,
       wifiRssi: rssi,
       uptime: upt,
       timestamp: timestampStr,
@@ -1056,6 +1333,8 @@ async function startServer() {
             humidity: h,
             soil_moisture: s,
             light_level: l,
+            battery_level: bat,
+            battery_voltage: batV,
             wifi_rssi: rssi,
             uptime: upt,
             timestamp: timestampStr,
@@ -1096,12 +1375,220 @@ async function startServer() {
       }
     }
 
+    // --- Automatic LINE Alert Checks ---
+    if (globalLineConfig.enabled && (globalLineConfig.channelAccessToken || (globalLineConfig as any).token)) {
+      const nowMs = Date.now();
+      const COOLDOWN_MS = 15 * 60 * 1000; // 15 minutes cooldown per alert type
+
+      // 1. Low Battery Alert
+      if (globalLineConfig.notifyBatteryLow && bat !== undefined) {
+        const threshold = globalLineConfig.batteryThreshold || 20;
+        if (bat < threshold) {
+          const key = `bat_alert_${deviceId}`;
+          if (!alertCooldowns[key] || (nowMs - alertCooldowns[key] > COOLDOWN_MS)) {
+            alertCooldowns[key] = nowMs;
+            const alertMsg = `\n⚠️ [แจ้งเตือนด่วน: แบตเตอรี่ต่ำเกินกำหนด!]\n📍 สถานที่: ${dev.location}\n🪫 ระดับถ่าน AA 3 ก้อน เหลือเพียง: ${bat}% (${batV}V)\n⏰ เวลา: ${timestampStr}\n💡 คำแนะนำ: โปรดเปลี่ยนถ่าน AA 3 ก้อนใหม่ (1.2V x 3) เพื่อป้องกันบอร์ด ESP32 หยุดทำงาน`;
+            sendLineNotification(alertMsg).then(res => {
+              if (res.success) {
+                addLog(deviceId, "warn", `📱 [LINE Notification] ส่งการแจ้งเตือนแบตเตอรี่ต่ำ (${bat}%) เข้า LINE เรียบร้อยแล้ว`);
+              }
+            });
+          }
+        }
+      }
+
+      // 2. High Temperature Alert
+      if (globalLineConfig.notifySensorsAlert && globalLineConfig.tempMaxThreshold && t !== undefined) {
+        if (t > globalLineConfig.tempMaxThreshold) {
+          const key = `temp_alert_${deviceId}`;
+          if (!alertCooldowns[key] || (nowMs - alertCooldowns[key] > COOLDOWN_MS)) {
+            alertCooldowns[key] = nowMs;
+            const alertMsg = `\n🔥 [แจ้งเตือนด่วน: อุณหภูมิสูงเกินกำหนด!]\n📍 สถานที่: ${dev.location}\n🌡️ อุณหภูมิปัจจุบัน: ${t} °C (เกณฑ์เตือนสูงกว่า > ${globalLineConfig.tempMaxThreshold} °C)\n⏰ เวลา: ${timestampStr}`;
+            sendLineNotification(alertMsg).then(res => {
+              if (res.success) {
+                addLog(deviceId, "warn", `📱 [LINE Notification] ส่งการแจ้งเตือนอุณหภูมิสูง (${t}°C) เข้า LINE เรียบร้อยแล้ว`);
+              }
+            });
+          }
+        }
+      }
+
+      // 3. Low Soil Moisture Alert
+      if (globalLineConfig.notifySensorsAlert && globalLineConfig.soilMinThreshold && s !== undefined) {
+        if (s < globalLineConfig.soilMinThreshold) {
+          const key = `soil_alert_${deviceId}`;
+          if (!alertCooldowns[key] || (nowMs - alertCooldowns[key] > COOLDOWN_MS)) {
+            alertCooldowns[key] = nowMs;
+            const alertMsg = `\n🌵 [แจ้งเตือนด่วน: ดินแห้งเกินกำหนด!]\n📍 สถานที่: ${dev.location}\n🌱 ความชื้นในดินเหลือเพียง: ${s} % (เกณฑ์เตือนต่ำกว่า < ${globalLineConfig.soilMinThreshold} %)\n⏰ เวลา: ${timestampStr}\n💡 แนะนำ: สั่งเปิดปั๊มน้ำผ่านระบบเพื่อรดน้ำแปลงปลูก`;
+            sendLineNotification(alertMsg).then(res => {
+              if (res.success) {
+                addLog(deviceId, "warn", `📱 [LINE Notification] ส่งการแจ้งเตือนความชื้นดินต่ำ (${s}%) เข้า LINE เรียบร้อยแล้ว`);
+              }
+            });
+          }
+        }
+      }
+    }
+
+    // --- Automatic Telegram Alert Checks ---
+    if (globalTelegramConfig.enabled && globalTelegramConfig.botToken && globalTelegramConfig.chatId) {
+      const nowMs = Date.now();
+      const COOLDOWN_MS = 15 * 60 * 1000;
+
+      // 1. Low Battery Alert
+      if (globalTelegramConfig.notifyBatteryLow && bat !== undefined) {
+        const threshold = globalTelegramConfig.batteryThreshold || 20;
+        if (bat < threshold) {
+          const key = `tg_bat_alert_${deviceId}`;
+          if (!alertCooldowns[key] || (nowMs - alertCooldowns[key] > COOLDOWN_MS)) {
+            alertCooldowns[key] = nowMs;
+            const alertMsg = `⚠️ <b>[แจ้งเตือนด่วน Telegram: แบตเตอรี่ต่ำ!]</b>\n📍 สถานที่: ${dev.location}\n🪫 ระดับถ่าน AA 3 ก้อน เหลือเพียง: <b>${bat}%</b> (${batV}V)\n⏰ เวลา: ${timestampStr}\n💡 โปรดเปลี่ยนถ่าน AA 3 ก้อนใหม่`;
+            sendTelegramNotification(alertMsg).then(res => {
+              if (res.success) {
+                addLog(deviceId, "warn", `✈️ [Telegram Alert] ส่งการแจ้งเตือนแบตเตอรี่ต่ำ (${bat}%) เข้า Telegram เรียบร้อย`);
+              }
+            });
+          }
+        }
+      }
+
+      // 2. High Temperature Alert
+      if (globalTelegramConfig.notifySensorsAlert && globalTelegramConfig.tempMaxThreshold && t !== undefined) {
+        if (t > globalTelegramConfig.tempMaxThreshold) {
+          const key = `tg_temp_alert_${deviceId}`;
+          if (!alertCooldowns[key] || (nowMs - alertCooldowns[key] > COOLDOWN_MS)) {
+            alertCooldowns[key] = nowMs;
+            const alertMsg = `🔥 <b>[แจ้งเตือนด่วน Telegram: อุณหภูมิสูง!]</b>\n📍 สถานที่: ${dev.location}\n🌡️ อุณหภูมิปัจจุบัน: <b>${t} °C</b> (เกณฑ์เตือน > ${globalTelegramConfig.tempMaxThreshold} °C)\n⏰ เวลา: ${timestampStr}`;
+            sendTelegramNotification(alertMsg).then(res => {
+              if (res.success) {
+                addLog(deviceId, "warn", `✈️ [Telegram Alert] ส่งการแจ้งเตือนอุณหภูมิสูง (${t}°C) เข้า Telegram เรียบร้อย`);
+              }
+            });
+          }
+        }
+      }
+
+      // 3. Low Soil Moisture Alert
+      if (globalTelegramConfig.notifySensorsAlert && globalTelegramConfig.soilMinThreshold && s !== undefined) {
+        if (s < globalTelegramConfig.soilMinThreshold) {
+          const key = `tg_soil_alert_${deviceId}`;
+          if (!alertCooldowns[key] || (nowMs - alertCooldowns[key] > COOLDOWN_MS)) {
+            alertCooldowns[key] = nowMs;
+            const alertMsg = `🌵 <b>[แจ้งเตือนด่วน Telegram: ดินแห้ง!]</b>\n📍 สถานที่: ${dev.location}\n🌱 ความชื้นในดินเหลือเพียง: <b>${s} %</b> (เกณฑ์เตือน < ${globalTelegramConfig.soilMinThreshold} %)\n⏰ เวลา: ${timestampStr}\n💡 สั่งเปิดปั๊มน้ำเพื่อรดน้ำแปลงปลูก`;
+            sendTelegramNotification(alertMsg).then(res => {
+              if (res.success) {
+                addLog(deviceId, "warn", `✈️ [Telegram Alert] ส่งการแจ้งเตือนความชื้นดินต่ำ (${s}%) เข้า Telegram เรียบร้อย`);
+              }
+            });
+          }
+        }
+      }
+    }
+
     res.json(dev.control);
   });
 
-  // 4. Toggle Simulation Mode
+  // --- LINE Notification API Endpoints ---
+  app.get("/api/line/config", (req, res) => {
+    res.json(globalLineConfig);
+  });
+
+  app.post("/api/line/config", (req, res) => {
+    const newConfig = req.body as Partial<LineConfig>;
+    globalLineConfig = {
+      ...globalLineConfig,
+      ...newConfig,
+    };
+    saveSettingToSupabase("line_config", globalLineConfig).catch(err => console.warn("Failed to persist LINE config to Supabase:", err));
+    res.json({ success: true, config: globalLineConfig });
+  });
+
+  app.post("/api/line/test", async (req, res) => {
+    const testConfig = req.body as LineConfig;
+    const testMsg = `\n✅ [ทดสอบระบบ LINE Messaging API]\nเชื่อมต่อสำเร็จ! ระบบแจ้งเตือนสถานะแบตเตอรี่ถ่าน AA 3 ก้อน และเซ็นเซอร์พร้อมทำงานแล้ว\n⏰ เวลาทดสอบ: ${new Date().toLocaleTimeString("th-TH")}`;
+    
+    const result = await sendLineNotification(testMsg, testConfig);
+    if (result.success) {
+      res.json({ success: true });
+    } else {
+      res.status(400).json({ success: false, error: result.error });
+    }
+  });
+
+  app.post("/api/line/send-report", async (req, res) => {
+    const deviceId = (req.body.deviceId as string) || "device_1";
+    const dev = devices[deviceId];
+    if (!dev) {
+      return res.status(404).json({ error: "ไม่พบอุปกรณ์" });
+    }
+
+    const reportMsg = formatSensorLineReport(
+      dev,
+      globalLineConfig.selectedSensors || ["temperature", "humidity", "soilMoisture", "lightLevel", "batteryLevel", "batteryVoltage", "relayState"],
+      "รายงานสรุปสถานะเซ็นเซอร์สด"
+    );
+
+    const result = await sendLineNotification(reportMsg);
+    if (result.success) {
+      await addLog(deviceId, "info", `📱 [LINE Notification] ส่งรายงานสรุปค่าเซ็นเซอร์สดเข้า LINE เรียบร้อยแล้ว`);
+      res.json({ success: true });
+    } else {
+      res.status(400).json({ success: false, error: result.error });
+    }
+  });
+
+  // --- Telegram Bot Notification API Endpoints ---
+  app.get("/api/telegram/config", (req, res) => {
+    res.json(globalTelegramConfig);
+  });
+
+  app.post("/api/telegram/config", (req, res) => {
+    const newConfig = req.body as Partial<TelegramConfig>;
+    globalTelegramConfig = {
+      ...globalTelegramConfig,
+      ...newConfig,
+    };
+    saveSettingToSupabase("telegram_config", globalTelegramConfig).catch(err => console.warn("Failed to persist Telegram config to Supabase:", err));
+    res.json({ success: true, config: globalTelegramConfig });
+  });
+
+  app.post("/api/telegram/test", async (req, res) => {
+    const testConfig = req.body as TelegramConfig;
+    const testMsg = `<b>✅ [ทดสอบระบบ Telegram Bot API]</b>\n\nเชื่อมต่อสำเร็จ! ระบบแจ้งเตือนสถานะแบตเตอรี่ถ่าน AA 3 ก้อน และเซ็นเซอร์พร้อมทำงานแล้ว\n⏰ <b>เวลาทดสอบ:</b> ${new Date().toLocaleTimeString("th-TH")}`;
+    
+    const result = await sendTelegramNotification(testMsg, testConfig);
+    if (result.success) {
+      res.json({ success: true });
+    } else {
+      res.status(400).json({ success: false, error: result.error });
+    }
+  });
+
+  app.post("/api/telegram/send-report", async (req, res) => {
+    const deviceId = (req.body.deviceId as string) || "device_1";
+    const dev = devices[deviceId];
+    if (!dev) {
+      return res.status(404).json({ error: "ไม่พบอุปกรณ์" });
+    }
+
+    const reportMsg = formatSensorTelegramReport(
+      dev,
+      globalTelegramConfig.selectedSensors || ["temperature", "humidity", "soilMoisture", "lightLevel", "batteryLevel", "batteryVoltage", "relayState"],
+      "รายงานสรุปสถานะเซ็นเซอร์สด"
+    );
+
+    const result = await sendTelegramNotification(reportMsg);
+    if (result.success) {
+      await addLog(deviceId, "info", `✈️ [Telegram Notification] ส่งรายงานสรุปค่าเซ็นเซอร์สดเข้า Telegram เรียบร้อยแล้ว`);
+      res.json({ success: true });
+    } else {
+      res.status(400).json({ success: false, error: result.error });
+    }
+  });
+
+  // 4. Toggle Simulation Mode (Disabled)
   app.post("/api/device/simulation", async (req, res) => {
-    const { id, enabled } = req.body;
+    const { id } = req.body;
     const deviceId = id || "device_1";
     const dev = devices[deviceId];
     
@@ -1109,17 +1596,8 @@ async function startServer() {
       return res.status(404).json({ error: "ไม่พบอุปกรณ์" });
     }
 
-    if (enabled !== undefined) {
-      dev.simulationEnabled = !!enabled;
-      if (enabled) {
-        dev.isOnline = true;
-        dev.lastSeen = new Date().toISOString();
-        await addLog(deviceId, "info", "เปิดใช้งานระบบจำลองเซ็นเซอร์ (Simulation Mode)");
-      } else {
-        await addLog(deviceId, "warn", "ปิดใช้งานระบบจำลอง รอรับข้อมูลจริงจากบอร์ด ESP32");
-      }
-    }
-    res.json({ success: true, simulationEnabled: dev.simulationEnabled });
+    dev.simulationEnabled = false;
+    res.json({ success: true, simulationEnabled: false });
   });
 
   // 5. Clear history and logs for a specific device

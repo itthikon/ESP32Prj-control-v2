@@ -5,6 +5,9 @@ import {
   Droplets,
   Sprout,
   Sun,
+  Battery,
+  BatteryCharging,
+  BatteryWarning,
   Wifi,
   Hourglass,
   TrendingUp,
@@ -19,7 +22,7 @@ interface SensorGridProps {
 }
 
 export default function SensorGrid({ telemetry, isOnline, sensors = [] }: SensorGridProps) {
-  const { temperature, humidity, soilMoisture, lightLevel, wifiRssi, uptime } = telemetry;
+  const { temperature, humidity, soilMoisture, lightLevel, batteryLevel, batteryVoltage, wifiRssi, uptime } = telemetry;
 
   // Formatting uptime
   const formatUptime = (sec: number) => {
@@ -57,26 +60,43 @@ export default function SensorGrid({ telemetry, isOnline, sensors = [] }: Sensor
     return { label: "แดดจัด / แสงเข้มข้นสูง", color: "text-orange-600 bg-orange-50 border-orange-200" };
   };
 
+  // Battery status mapping
+  const getBatteryStatus = (bat: number) => {
+    if (bat >= 75) return { label: "พร้อมใช้งาน (แบตเตอรี่เต็ม)", color: "text-emerald-700 bg-emerald-50 border-emerald-200", barColor: "bg-emerald-500", iconBg: "bg-emerald-50 text-emerald-600" };
+    if (bat >= 40) return { label: "ระดับปกติ (พลังงานเพียงพอ)", color: "text-blue-700 bg-blue-50 border-blue-200", barColor: "bg-blue-500", iconBg: "bg-blue-50 text-blue-600" };
+    if (bat >= 20) return { label: "ปานกลาง (เตรียมชาร์จไฟ)", color: "text-amber-700 bg-amber-50 border-amber-200", barColor: "bg-amber-500", iconBg: "bg-amber-50 text-amber-600" };
+    return { label: "เตือน! แบตเตอรี่ต่ำมาก", color: "text-rose-700 bg-rose-50 border-rose-200 animate-pulse", barColor: "bg-rose-500", iconBg: "bg-rose-50 text-rose-600" };
+  };
+
   const soilStatus = getSoilStatus(soilMoisture);
   const lightStatus = getLightStatus(lightLevel);
+
+  const hasBatteryData = batteryLevel !== undefined && batteryLevel !== null;
+  const currentBattery = hasBatteryData ? batteryLevel : 0;
+  const currentVoltage = batteryVoltage !== undefined && batteryVoltage !== null 
+    ? batteryVoltage 
+    : (hasBatteryData ? parseFloat((3.0 + (currentBattery / 100) * 1.2).toFixed(2)) : 0);
+  const batStatus = getBatteryStatus(currentBattery);
 
   // Check which sensors are active/configured
   const hasTemp = sensors.some(s => s.type === "DHT22" || s.type === "DHT11" || s.type === "DS18B20");
   const hasHumidity = sensors.some(s => s.type === "DHT22" || s.type === "DHT11");
   const hasSoil = sensors.some(s => s.type === "SoilMoisture");
   const hasLight = sensors.some(s => s.type === "BH1750" || s.type === "LDR");
+  const hasBattery = sensors.some(s => s.type === "Battery") || batteryLevel !== undefined;
 
   // Filter other types of sensors configured but not mapped directly (e.g. MQ135, HC_SR04)
   const otherSensors = sensors.filter(s => s.type === "MQ135" || s.type === "HC_SR04");
 
-  const activeCount = [hasTemp, hasHumidity, hasSoil, hasLight].filter(Boolean).length;
+  const activeCount = [hasTemp, hasHumidity, hasSoil, hasLight, hasBattery].filter(Boolean).length;
 
   // Dynamic grid template columns based on how many metrics are displayed
   const getGridColsClass = () => {
     if (activeCount === 1) return "grid grid-cols-1 gap-4 sm:gap-6";
     if (activeCount === 2) return "grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6";
     if (activeCount === 3) return "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6";
-    return "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6";
+    if (activeCount === 4) return "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6";
+    return "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 sm:gap-6";
   };
 
   return (
@@ -204,6 +224,66 @@ export default function SensorGrid({ telemetry, isOnline, sensors = [] }: Sensor
           </div>
           <div className={`px-2.5 py-1 rounded-lg text-xs font-medium border text-center ${lightStatus.color}`}>
             {lightStatus.label}
+          </div>
+        </div>
+      )}
+
+      {/* 5. Battery Status Card */}
+      {hasBattery && (
+        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-xs flex flex-col justify-between hover:shadow-md transition-all">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm font-medium text-slate-500">แบตเตอรี่ (Battery)</span>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  ⚡ ADC Pin 35 จริง
+                </span>
+              </div>
+              <p className="text-[11px] font-semibold text-slate-400">ถ่าน AA 3 ก้อน (1.2V x 3 = 3.6V)</p>
+            </div>
+            <div className={`p-2 rounded-lg ${hasBatteryData ? batStatus.iconBg : 'bg-slate-100 text-slate-400'}`}>
+              {!hasBatteryData ? (
+                <Battery className="w-5 h-5 text-slate-400" />
+              ) : currentBattery < 20 ? (
+                <BatteryWarning className="w-5 h-5 text-rose-500 animate-bounce" />
+              ) : currentBattery >= 85 ? (
+                <BatteryCharging className="w-5 h-5" />
+              ) : (
+                <Battery className="w-5 h-5" />
+              )}
+            </div>
+          </div>
+          <div className="my-4">
+            {hasBatteryData ? (
+              <>
+                <div className="flex items-baseline justify-between">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-4xl font-bold font-display text-slate-800">{Math.round(currentBattery)}</span>
+                    <span className="text-lg font-medium text-slate-500">%</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xs font-mono font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">
+                      {currentVoltage.toFixed(2)}V
+                    </span>
+                    <p className="text-[10px] text-slate-400 mt-0.5">ช่วงไฟ: 3.0V - 4.2V</p>
+                  </div>
+                </div>
+                {/* Progress gauge bar */}
+                <div className="w-full bg-slate-100 rounded-full h-1.5 mt-3.5 overflow-hidden">
+                  <div
+                    className={`h-1.5 rounded-full transition-all duration-500 ${batStatus.barColor}`}
+                    style={{ width: `${Math.min(Math.max(currentBattery, 0), 100)}%` }}
+                  ></div>
+                </div>
+              </>
+            ) : (
+              <div className="py-2 text-center bg-slate-50 rounded-xl border border-slate-100">
+                <span className="text-xs text-slate-500 font-medium">⏳ รอรับค่าแรงดันจริงจากบอร์ด ESP32 (ADC Pin 35)</span>
+              </div>
+            )}
+          </div>
+          <div className={`px-2.5 py-1 rounded-lg text-xs font-medium border text-center ${hasBatteryData ? batStatus.color : 'text-slate-500 bg-slate-50 border-slate-200'}`}>
+            {hasBatteryData ? batStatus.label : 'รอการวัดค่าแรงดันไฟจริง'}
           </div>
         </div>
       )}
