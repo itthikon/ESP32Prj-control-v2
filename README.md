@@ -1,20 +1,23 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# ESP32 IoT Dashboard & Web Control Panel
 
-# Run and deploy your AI Studio app
+ระบบแดชบอร์ดสำหรับควบคุมและมอนิเตอร์อุปกรณ์ ESP32 IoT แบบ Real-time รองรับทั้งการเชื่อมต่อผ่าน Supabase Cloud Database และโหมดจำลอง Local Simulation
 
-This contains everything you need to run your app locally.
+## 🚀 คุณสมบัติเด่น (Features)
+- **มอนิเตอร์เซนเซอร์แบบ Real-time**: แสดงผลอุณหภูมิ, ความชื้น, แสง, สวิตช์ และค่าเซนเซอร์ต่างๆ
+- **ฐานข้อมูล Supabase Cloud**: รองรับการเชื่อมต่อและจัดเก็บข้อมูลประวัติย้อนหลังด้วย Supabase
+- **ระบบสลับโหมดอัตโนมัติ**: รองรับทั้งโหมด Cloud Sync และ Local Simulation กรณีไม่มีสัญญาณอินเทอร์เน็ต
+- **ESP32 Code Generator**: สร้างโค้ด Arduino สำหรับนำไปแฟลชลงบอร์ด ESP32 ได้ทันที
+- **Local Desktop Launcher**: สคริปต์ `local-launcher.js` และ `run-linux.sh` สำหรับรันใช้งานแบบออฟไลน์บนเครื่องคอมพิวเตอร์
 
-View your app in AI Studio: https://ai.studio/apps/22444b5e-2257-4bbb-96c0-46ea5b9c05dc
+## 🛠️ วิธีการรันใช้งานแบบ Local (Local App)
+1. ดาวน์โหลดไฟล์โปรเจกต์ (ZIP) และทำการแตกไฟล์ทั้งหมด
+2. รันคำสั่งผ่าน Terminal หรือเรียกใช้สคริปต์รันโปรเจกต์:
+   ```bash
+   node local-launcher.js
+   ```
+3. ตัวระบบจะทำการตรวจสอบ Dependencies และสั่งสร้าง Production Build พร้อมเปิดใช้งานโดยอัตโนมัติ
 
-## Run Locally
-
-**Prerequisites:**  Node.js
-
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## 📡 การตั้งค่าการเชื่อมต่อ Supabase
+- เข้าไปที่แท็บ **"ตั้งค่า Supabase"** บนหน้าเว็บแดชบอร์ด
+- กรอก `SUPABASE_URL` และ `SUPABASE_PUBLISHABLE_KEY` (หรือ Secret Key)
+- กดปุ่มบันทึกและทดสอบการเชื่อมต่อ

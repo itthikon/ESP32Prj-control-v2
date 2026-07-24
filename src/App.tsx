@@ -613,6 +613,10 @@ export default function App() {
         onManualRefresh={() => fetchDeviceState(selectedDeviceId, true)}
         username={currentUser}
         onLogout={handleLogout}
+        supabaseConnected={deviceState.supabaseConnected}
+        supabaseError={deviceState.supabaseError}
+        isClientFallback={isClientFallback}
+        onOpenSupabaseTab={() => setActiveTab("supabase")}
       />
 
       {/* Main Container */}

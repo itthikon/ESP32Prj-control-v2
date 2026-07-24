@@ -4,6 +4,9 @@ let supabaseClient: any = null;
 let dynamicUrl: string | null = null;
 let dynamicAnonKey: string | null = null;
 
+const DEFAULT_SUPABASE_URL = "https://qarmbcckydnbyrrvgwfs.supabase.co";
+const DEFAULT_SUPABASE_KEY = "sb_publishable_v0QHEFqtEkFNboyGw9mD4w_ptkI8BFd";
+
 export function setDynamicSupabaseConfig(url: string | null, anonKey: string | null) {
   dynamicUrl = url;
   dynamicAnonKey = anonKey;
@@ -12,8 +15,8 @@ export function setDynamicSupabaseConfig(url: string | null, anonKey: string | n
 
 export function getDynamicSupabaseConfig() {
   return {
-    url: dynamicUrl || process.env.SUPABASE_URL || "https://qarmbcckydnbyrrvgwfs.supabase.co",
-    anonKey: dynamicAnonKey || process.env.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFhcm1iY2NreWRuYnlycnZnd2ZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM4NTY3MzMsImV4cCI6MjA5OTQzMjczM30.H_l4TtN6gIqAPo9CoDq-sa7Z-CI8oe4hsG0saFwvqoo",
+    url: dynamicUrl || process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL,
+    anonKey: dynamicAnonKey || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || DEFAULT_SUPABASE_KEY,
   };
 }
 
@@ -21,12 +24,12 @@ export function getSupabase() {
   if (supabaseClient) return supabaseClient;
 
   // Read dynamic config first, fallback to environment variables
-  const supabaseUrl = dynamicUrl || process.env.SUPABASE_URL || "https://qarmbcckydnbyrrvgwfs.supabase.co";
-  const supabaseAnonKey = dynamicAnonKey || process.env.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFhcm1iY2NreWRuYnlycnZnd2ZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM4NTY3MzMsImV4cCI6MjA5OTQzMjczM30.H_l4TtN6gIqAPo9CoDq-sa7Z-CI8oe4hsG0saFwvqoo";
+  const supabaseUrl = dynamicUrl || process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL;
+  const supabaseKey = dynamicAnonKey || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || DEFAULT_SUPABASE_KEY;
 
-  if (supabaseUrl && supabaseAnonKey) {
+  if (supabaseUrl && supabaseKey) {
     try {
-      supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+      supabaseClient = createClient(supabaseUrl, supabaseKey);
       return supabaseClient;
     } catch (err) {
       console.error("Supabase Initialization Error:", err);
@@ -38,8 +41,9 @@ export function getSupabase() {
 }
 
 export function isSupabaseConfigured(): boolean {
-  const supabaseUrl = dynamicUrl || process.env.SUPABASE_URL || "https://qarmbcckydnbyrrvgwfs.supabase.co";
-  const supabaseAnonKey = dynamicAnonKey || process.env.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFhcm1iY2NreWRuYnlycnZnd2ZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM4NTY3MzMsImV4cCI6MjA5OTQzMjczM30.H_l4TtN6gIqAPo9CoDq-sa7Z-CI8oe4hsG0saFwvqoo";
-  return !!(supabaseUrl && supabaseAnonKey);
+  const supabaseUrl = dynamicUrl || process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL;
+  const supabaseKey = dynamicAnonKey || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || DEFAULT_SUPABASE_KEY;
+  return !!(supabaseUrl && supabaseKey);
 }
+
 

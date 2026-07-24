@@ -26,10 +26,10 @@ export default function SupabaseSettingsPanel({
   useEffect(() => {
     if (currentConfig) {
       setUrl(currentConfig.url || "https://qarmbcckydnbyrrvgwfs.supabase.co");
-      setAnonKey(currentConfig.anonKey || "");
+      setAnonKey(currentConfig.anonKey || "sb_publishable_v0QHEFqtEkFNboyGw9mD4w_ptkI8BFd");
     } else {
       setUrl("https://qarmbcckydnbyrrvgwfs.supabase.co");
-      setAnonKey("");
+      setAnonKey("sb_publishable_v0QHEFqtEkFNboyGw9mD4w_ptkI8BFd");
     }
   }, [currentConfig]);
 

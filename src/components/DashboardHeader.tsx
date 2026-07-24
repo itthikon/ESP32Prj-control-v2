@@ -1,5 +1,5 @@
 import React from "react";
-import { Cpu, Wifi, WifiOff, RefreshCw, Trash2, Zap, Play, Pause, LogOut, User } from "lucide-react";
+import { Cpu, Wifi, WifiOff, RefreshCw, Trash2, Zap, Play, Pause, LogOut, User, Database, CheckCircle2, AlertTriangle } from "lucide-react";
 
 interface DashboardHeaderProps {
   isOnline: boolean;
@@ -9,6 +9,10 @@ interface DashboardHeaderProps {
   onManualRefresh: () => void;
   username: string;
   onLogout: () => void;
+  supabaseConnected?: boolean;
+  supabaseError?: string | null;
+  isClientFallback?: boolean;
+  onOpenSupabaseTab?: () => void;
 }
 
 export default function DashboardHeader({
@@ -19,6 +23,10 @@ export default function DashboardHeader({
   onManualRefresh,
   username,
   onLogout,
+  supabaseConnected = false,
+  supabaseError = null,
+  isClientFallback = false,
+  onOpenSupabaseTab,
 }: DashboardHeaderProps) {
   const formattedLastSeen = lastSeen
     ? new Date(lastSeen).toLocaleTimeString("th-TH")
@@ -44,15 +52,16 @@ export default function DashboardHeader({
         </div>
 
         {/* Controls & Connection Status */}
-        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           
-          {/* Connection Status Badge */}
+          {/* ESP32 Hardware Connection Status Badge */}
           <div
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium border ${
               isOnline
                 ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                 : "bg-rose-50 text-rose-700 border-rose-200"
             }`}
+            title={isOnline ? "การเชื่อมต่อกับโมดูล ESP32 ปกติ" : "โมดูล ESP32 ขาดการติดต่อ"}
           >
             <span className="relative flex h-2 w-2">
               <span
@@ -66,20 +75,49 @@ export default function DashboardHeader({
                 }`}
               ></span>
             </span>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 font-semibold">
               {isOnline ? (
                 <>
                   <Wifi className="w-3.5 h-3.5" />
-                  <span>เชื่อมต่ออยู่ (Online)</span>
+                  <span>ESP32: ออนไลน์</span>
                 </>
               ) : (
                 <>
                   <WifiOff className="w-3.5 h-3.5" />
-                  <span>ขาดการติดต่อ (Offline)</span>
+                  <span>ESP32: ออฟไลน์</span>
                 </>
               )}
             </div>
           </div>
+
+          {/* Database (Supabase) Connection Status Badge */}
+          <button
+            onClick={onOpenSupabaseTab}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold border transition-all cursor-pointer ${
+              supabaseConnected
+                ? "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+                : isClientFallback
+                ? "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100"
+                : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+            }`}
+            title="คลิกเพื่อจัดการการตั้งค่าฐานข้อมูล Supabase"
+          >
+            <Database className="w-3.5 h-3.5 shrink-0 text-blue-600" />
+            <div className="flex items-center gap-1">
+              <span>ฐานข้อมูล:</span>
+              {supabaseConnected ? (
+                <span className="text-emerald-600 font-bold flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" /> Supabase
+                </span>
+              ) : isClientFallback ? (
+                <span className="text-amber-600 font-bold flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3" /> Local Sim
+                </span>
+              ) : (
+                <span className="text-blue-600 font-bold">เปิดใช้งาน</span>
+              )}
+            </div>
+          </button>
 
           {/* Last Seen indicator */}
           <div className="hidden sm:block text-right text-xs text-slate-500">

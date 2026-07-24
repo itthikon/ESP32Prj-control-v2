@@ -149,6 +149,40 @@ console.log("=========================================");
 console.log("   ESP32 IoT Dashboard - Local Launcher   ");
 console.log("=========================================");
 
+// ตรวจสอบความถูกต้องของ package.json
+const pkgPath = path.join(__dirname, "package.json");
+if (!fs.existsSync(pkgPath)) {
+  console.error("❌ ไม่พบไฟล์ package.json ในโฟลเดอร์นี้!");
+  console.error("👉 กรุณาแตกไฟล์ ZIP ของโปรเจกต์ทั้งหมดมาไว้ในโฟลเดอร์นี้ก่อนรันสคริปต์\\n");
+  process.exit(1);
+}
+
+try {
+  const pkgData = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+  let modified = false;
+
+  if (pkgData.type !== "module") {
+    pkgData.type = "module";
+    modified = true;
+  }
+
+  if (!pkgData.scripts) {
+    pkgData.scripts = {};
+  }
+
+  if (!pkgData.scripts.build) {
+    pkgData.scripts.build = "tsc && vite build";
+    modified = true;
+  }
+
+  if (modified) {
+    fs.writeFileSync(pkgPath, JSON.stringify(pkgData, null, 2), "utf-8");
+    console.log(">> ปรับแต่ง package.json ให้รองรับคำสั่ง build และ ES Module เรียบร้อยแล้ว");
+  }
+} catch (err) {
+  console.warn("⚠️ ไม่สามารถตรวจสอบ package.json ได้:", err.message);
+}
+
 // ตรวจสอบความถูกต้องของ node_modules และทำการติดตั้ง
 if (!fs.existsSync(path.join(__dirname, "node_modules"))) {
   console.log("\\n>> ไม่พบไลบรารี! กำลังติดตั้ง Dependencies ผ่าน npm...");
