@@ -17,7 +17,8 @@
    ```
 3. ตัวระบบจะทำการตรวจสอบ Dependencies และสั่งสร้าง Production Build พร้อมเปิดใช้งานโดยอัตโนมัติ
 
-## 📡 การตั้งค่าการเชื่อมต่อ Supabase
-- เข้าไปที่แท็บ **"ตั้งค่า Supabase"** บนหน้าเว็บแดชบอร์ด
-- กรอก `SUPABASE_URL` และ `SUPABASE_PUBLISHABLE_KEY` (หรือ Secret Key)
-- กดปุ่มบันทึกและทดสอบการเชื่อมต่อ
+## 🌐 การ Deploy บน Render (Render Hosting)
+- **Build Command**: `npm run build`
+- **Start Command**: `npm run start` (หรือ `node dist/server.cjs`)
+- **Environment Variables**: ตั้งค่า `SUPABASE_URL` และ `SUPABASE_KEY` (หรือ `SUPABASE_PUBLISHABLE_KEY`) ในหน้า Environment ของ Render
+- ตัวระบบเป็น Full-Stack Express Server ที่รวมทั้ง API และ Static Frontend ซึ่งรันได้อย่างดีบน Render Web Service

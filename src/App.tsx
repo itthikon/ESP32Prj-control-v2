@@ -182,8 +182,8 @@ export default function App() {
         setDevicesList(data.devices || []);
         setSupabaseConfig(data.supabaseConfig || null);
       }
-    } catch (err) {
-      console.error("Failed to fetch devices list:", err);
+    } catch (err: any) {
+      console.warn("Failed to fetch devices list (retrying on next tick):", err.message || err);
     }
   }, [isClientFallback]);
 
